@@ -19,6 +19,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -26,5 +27,7 @@ jobs:
 
       - uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
         with:
-          # Private repo: GitHub Advanced Security (SARIF upload) is not available.
-          advanced-security: false
+          # SARIF upload requires GitHub Advanced Security, which is paid on
+          # private repos — skip it while private, enable it automatically
+          # once the repository is made public.
+          advanced-security: ${{ !github.event.repository.private }}
