@@ -14,7 +14,7 @@ Brute force login protection for Filament panels and Laravel apps. Failed login 
 
 - PHP 8.3+
 - Laravel 11, 12 or 13
-- Filament v5 (Livewire 4)
+- Filament v5 (≥ 5.6.5 — earlier 5.x releases have known security advisories; Livewire 4)
 
 ## Installation
 
