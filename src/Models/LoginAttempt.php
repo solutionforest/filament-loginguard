@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use WhichBrowser\Parser;
 
 /**
  * @property int $id
@@ -18,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $last_attempt_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
+ * @property-read string|null $device_name
  */
 class LoginAttempt extends Model
 {
@@ -40,6 +42,20 @@ class LoginAttempt extends Model
     public function isLocked(): bool
     {
         return $this->locked_until !== null && $this->locked_until->isFuture();
+    }
+
+    /**
+     * Human-readable device description, e.g. "Chrome 151 on OS X 10.15.7".
+     */
+    public function getDeviceNameAttribute(): ?string
+    {
+        if ($this->user_agent === null || $this->user_agent === '') {
+            return null;
+        }
+
+        $parser = new Parser($this->user_agent);
+
+        return trim("{$parser->browser->toString()} on {$parser->os->toString()}");
     }
 
     public function unlock(): void

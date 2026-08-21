@@ -33,14 +33,26 @@ it('renders the blocked attempts page', function () {
     LoginAttempt::factory()->locked()->create([
         'ip' => '1.2.3.4',
         'email' => 'a@example.com',
-        'user_agent' => 'Mozilla/5.0 (TestBrowser) AppleWebKit/537.36 Chrome/151.0.0.0 Safari/537.36',
+        'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
     ]);
 
     Livewire::test(LoginGuard::class)
         ->assertSuccessful()
         ->assertSee('1.2.3.4')
-        ->assertSee('TestBrowser')
+        ->assertSee('Chrome 151 on macOS')
         ->assertDontSee('Lockouts');
+});
+
+it('parses user agents into device names', function () {
+    $record = LoginAttempt::factory()->create([
+        'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
+    ]);
+
+    expect($record->device_name)->toBe('Chrome 151 on macOS');
+
+    $record->update(['user_agent' => null]);
+
+    expect($record->device_name)->toBeNull();
 });
 
 it('can unblock a record', function () {

@@ -109,9 +109,8 @@ class LoginGuard extends Page implements HasTable
                 TextColumn::make('email')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.email'))
                     ->searchable(),
-                TextColumn::make('user_agent')
+                TextColumn::make('device_name')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.user_agent'))
-                    ->limit(50)
                     ->tooltip(fn (LoginAttempt $record): ?string => $record->user_agent),
                 TextColumn::make('attempts')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.attempts'))
