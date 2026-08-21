@@ -4,8 +4,6 @@ namespace SolutionForest\FilamentLoginGuard\Pages;
 
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Clusters\Cluster;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -111,12 +109,17 @@ class LoginGuard extends Page implements HasTable
                 TextColumn::make('email')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.email'))
                     ->searchable(),
+                TextColumn::make('user_agent')
+                    ->label(__('filament-loginguard::loginguard.page.table.columns.user_agent'))
+                    ->limit(50)
+                    ->tooltip(fn (LoginAttempt $record): ?string => $record->user_agent),
                 TextColumn::make('attempts')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.attempts'))
                     ->badge(),
                 TextColumn::make('lockout_count')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.lockout_count'))
-                    ->badge(),
+                    ->badge()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('locked_until')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.locked_until'))
                     ->dateTime()
@@ -154,8 +157,6 @@ class LoginGuard extends Page implements HasTable
                             ->success()
                             ->send();
                     }),
-                DeleteAction::make()
-                    ->label(__('filament-loginguard::loginguard.page.table.actions.delete')),
             ])
             ->bulkActions([
                 BulkAction::make('unblockMany')
@@ -168,7 +169,6 @@ class LoginGuard extends Page implements HasTable
 
                         return $records;
                     }),
-                DeleteBulkAction::make(),
             ]);
     }
 }

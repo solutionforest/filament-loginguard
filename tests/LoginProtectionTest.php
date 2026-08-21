@@ -12,6 +12,7 @@ use SolutionForest\FilamentLoginGuard\Tests\Support\TestUser;
 beforeEach(function () {
     Carbon::setTestNow('2026-01-01 00:00:00');
     request()->server->set('REMOTE_ADDR', '1.2.3.4');
+    request()->headers->set('User-Agent', 'Mozilla/5.0 (TestBrowser) Chrome/151.0.0.0');
     config()->set('filament-loginguard.whitelisted_ips', []);
     config()->set('filament-loginguard.notifications.enabled', false);
 
@@ -40,6 +41,7 @@ it('records failed attempts', function () {
     expect($row->ip)->toBe('1.2.3.4')
         ->and($row->email)->toBe('a@example.com')
         ->and($row->attempts)->toBe(3)
+        ->and($row->user_agent)->toBe('Mozilla/5.0 (TestBrowser) Chrome/151.0.0.0')
         ->and($row->last_attempt_at->equalTo(now()))->toBeTrue()
         ->and($row->isLocked())->toBeFalse();
 });

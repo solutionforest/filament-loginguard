@@ -12,6 +12,7 @@ return [
             'columns' => [
                 'ip' => 'IP Address',
                 'email' => 'Email',
+                'user_agent' => 'Browser',
                 'attempts' => 'Attempts',
                 'lockout_count' => 'Lockouts',
                 'locked_until' => 'Locked until',
@@ -26,7 +27,6 @@ return [
                 'unblock' => 'Unblock',
                 'unblock_many' => 'Unblock selected',
                 'unblocked' => 'Unblocked',
-                'delete' => 'Delete',
             ],
         ],
     ],

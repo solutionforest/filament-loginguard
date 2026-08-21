@@ -67,7 +67,8 @@ class TestCase extends Orchestra
 
     protected function defineDatabaseMigrations(): void
     {
-        // Explicit file path: Laravel 13 only treats paths ending in `.php` as migration files.
+        // Explicit file paths: Laravel 13 only treats paths ending in `.php` as migration files.
         $this->loadMigrationsFrom(__DIR__ . '/../database/migrations/create_filament_loginguard_attempts_table.php');
+        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations/update_filament_loginguard_attempts_table_add_user_agent.php');
     }
 }

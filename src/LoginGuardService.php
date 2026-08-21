@@ -5,6 +5,7 @@ namespace SolutionForest\FilamentLoginGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Notifications\AccountLockedNotification;
 
@@ -55,7 +56,7 @@ final class LoginGuardService
      * Record one failed attempt. Returns a LockoutResult describing whether THIS attempt
      * triggered a lockout (so the listener can throw + notify).
      */
-    public function recordFailure(string $ip, string $email): LockoutResult
+    public function recordFailure(string $ip, string $email, ?string $userAgent = null): LockoutResult
     {
         $now = Carbon::now();
         $maxAttempts = (int) config('filament-loginguard.max_attempts', 10);
@@ -74,6 +75,7 @@ final class LoginGuardService
 
         $row->attempts += 1;
         $row->last_attempt_at = $now;
+        $row->user_agent = $userAgent === null ? null : Str::limit($userAgent, 255);
         $row->save();
 
         $cutoff = $now->copy()->subMinutes($windowMinutes);

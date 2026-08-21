@@ -58,7 +58,7 @@ class AuthenticationListener
             return; // never count/extend during an active lock
         }
 
-        $result = $this->service->recordFailure($ip, $email);
+        $result = $this->service->recordFailure($ip, $email, request()->userAgent());
 
         if (! $result->locked) {
             return;

@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $ip
  * @property string $email
+ * @property string|null $user_agent
  * @property int $attempts
  * @property int $lockout_count
  * @property Carbon|null $locked_until

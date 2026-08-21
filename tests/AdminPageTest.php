@@ -33,11 +33,14 @@ it('renders the blocked attempts page', function () {
     LoginAttempt::factory()->locked()->create([
         'ip' => '1.2.3.4',
         'email' => 'a@example.com',
+        'user_agent' => 'Mozilla/5.0 (TestBrowser) AppleWebKit/537.36 Chrome/151.0.0.0 Safari/537.36',
     ]);
 
     Livewire::test(LoginGuard::class)
         ->assertSuccessful()
-        ->assertSee('1.2.3.4');
+        ->assertSee('1.2.3.4')
+        ->assertSee('TestBrowser')
+        ->assertDontSee('Lockouts');
 });
 
 it('can unblock a record', function () {
@@ -53,13 +56,12 @@ it('can unblock a record', function () {
         ->and($record->lockout_count)->toBe(0);
 });
 
-it('can delete a record', function () {
-    $record = LoginAttempt::factory()->locked()->create();
+it('offers no delete action for records', function () {
+    LoginAttempt::factory()->locked()->create();
 
     Livewire::test(LoginGuard::class)
-        ->callTableAction('delete', $record);
-
-    expect(LoginAttempt::query()->find($record->id))->toBeNull();
+        ->assertSuccessful()
+        ->assertActionDoesNotExist('delete');
 });
 
 it('denies access when the admin page is disabled', function () {

@@ -5,7 +5,7 @@
 [![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/solutionforest/filament-loginguard/fix-code-style.yml?branch=5.x&label=code%20style&style=flat-square)](https://github.com/solutionforest/filament-loginguard/actions?query=workflow%3A"fix-code-style"+branch%3A5.x)
 [![Total Downloads](https://img.shields.io/packagist/dt/solution-forest/filament-loginguard.svg?style=flat-square)](https://packagist.org/packages/solution-forest/filament-loginguard)
 
-Brute force login protection for Filament panels and Laravel apps. Failed login attempts are recorded per IP/email pair in a database table; once a threshold is reached the IP and/or email is locked out for a configurable, escalating duration. Whitelists bypass protection entirely, admins are notified by email on lockouts, and a panel page lets you inspect, unblock and delete recorded attempts.
+Brute force login protection for Filament panels and Laravel apps. Failed login attempts are recorded per IP/email pair in a database table, along with the browser that made them; once a threshold is reached the IP and/or email is locked out for a configurable, escalating duration. Whitelists bypass protection entirely, admins are notified by email on lockouts, and a panel page lets you inspect and unblock recorded attempts.
 
 > [!NOTE]
 > Filament already throttles its login page at 5 attempts per minute per IP. This package adds the missing **lockout layer** on top of that: persistent tracking, escalating bans, per-email protection and an admin UI.
@@ -45,7 +45,7 @@ php artisan vendor:publish --tag="filament-loginguard-views"
 php artisan vendor:publish --tag="filament-loginguard-translations"
 ```
 
-To enable the **admin page** (view / unblock / delete recorded attempts), register the plugin in your panel provider, e.g. `app/Providers/Filament/AdminPanelProvider.php`:
+To enable the **admin page** (view / unblock recorded attempts), register the plugin in your panel provider, e.g. `app/Providers/Filament/AdminPanelProvider.php`:
 
 ```php
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;

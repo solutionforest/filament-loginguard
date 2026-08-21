@@ -141,6 +141,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
     {
         return [
             'create_filament_loginguard_attempts_table',
+            'update_filament_loginguard_attempts_table_add_user_agent',
         ];
     }
 }
