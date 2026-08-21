@@ -56,6 +56,15 @@ it('can unblock a record', function () {
         ->and($record->lockout_count)->toBe(0);
 });
 
+it('only offers unblock for locked records', function () {
+    $locked = LoginAttempt::factory()->locked()->create();
+    $tracked = LoginAttempt::factory()->create(['attempts' => 2]);
+
+    Livewire::test(LoginGuard::class)
+        ->assertTableActionVisible('unblock', $locked)
+        ->assertTableActionHidden('unblock', $tracked);
+});
+
 it('offers no delete action for records', function () {
     LoginAttempt::factory()->locked()->create();
 

@@ -12,7 +12,7 @@ return [
             'columns' => [
                 'ip' => 'IP Address',
                 'email' => 'Email',
-                'user_agent' => 'Browser',
+                'user_agent' => 'Device',
                 'attempts' => 'Attempts',
                 'lockout_count' => 'Lockouts',
                 'locked_until' => 'Locked until',

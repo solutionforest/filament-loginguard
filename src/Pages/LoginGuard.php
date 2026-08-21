@@ -149,6 +149,7 @@ class LoginGuard extends Page implements HasTable
                     ->icon('heroicon-o-lock-open')
                     ->color('success')
                     ->requiresConfirmation()
+                    ->visible(fn (LoginAttempt $record): bool => $record->isLocked())
                     ->action(function (LoginAttempt $record): void {
                         $record->unlock();
 
