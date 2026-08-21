@@ -33,6 +33,7 @@ jobs:
             laravel: 13.*
             testbench: 11.*
             filament: 5.0.*
+            stability: prefer-stable
     name: P${{ matrix.php }} - L${{ matrix.laravel }} - F${{ matrix.filament }} - ${{ matrix.stability }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

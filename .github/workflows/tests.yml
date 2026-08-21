@@ -43,6 +43,7 @@ jobs:
             carbon: 3.*
             collision: 8.*
             filament: 5.0.*
+            stability: prefer-stable
 
     name: P${{ matrix.php }} - L${{ matrix.laravel }} - F${{ matrix.filament }} - ${{ matrix.stability }} - ${{ matrix.os }}
 
