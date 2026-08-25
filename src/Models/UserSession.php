@@ -66,9 +66,9 @@ class UserSession extends Model
 
     public function getIsOnlineAttribute(): bool
     {
-        $threshold = (int) config('filament-loginguard.sessions.online_threshold_minutes', 5);
+        $threshold = (int) config('filament-loginguard.sessions.online_threshold_seconds', 60);
 
-        return $this->last_active_at->gte(now()->subMinutes($threshold));
+        return $this->last_active_at->gte(now()->subSeconds($threshold));
     }
 
     public function getLastActiveLabelAttribute(): string

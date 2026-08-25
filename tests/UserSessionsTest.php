@@ -34,13 +34,21 @@ it('renders active sessions with device and last activity', function () {
         'ip_address' => '1.2.3.4',
         'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
         'payload' => 'test',
+        'last_activity' => now()->subSeconds(30)->timestamp,
+    ]);
+
+    UserSession::query()->create([
+        'id' => 'session-recent',
+        'user_id' => 43,
+        'ip_address' => '5.6.7.8',
+        'payload' => 'test',
         'last_activity' => now()->subMinutes(2)->timestamp,
     ]);
 
     UserSession::query()->create([
         'id' => 'session-stale',
-        'user_id' => 43,
-        'ip_address' => '5.6.7.8',
+        'user_id' => 44,
+        'ip_address' => '9.9.9.9',
         'payload' => 'test',
         'last_activity' => now()->subHours(2)->timestamp,
     ]);
@@ -50,6 +58,7 @@ it('renders active sessions with device and last activity', function () {
         ->assertSee('1.2.3.4')
         ->assertSee('Chrome on macOS')
         ->assertSee('Online now')
+        ->assertSee('2 minutes ago')
         ->assertSee('2 hours ago');
 });
 

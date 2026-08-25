@@ -90,8 +90,8 @@ return [
     // including Livewire clicks) and offers a one-click Revoke.
     'sessions' => [
         'table' => 'sessions',
-        // A session whose last_activity is within this many minutes is "online".
-        'online_threshold_minutes' => 5,
+        // A session whose last_activity is within this many seconds is "online".
+        'online_threshold_seconds' => 60,
         // Eloquent model used to resolve a session's user_id. null = auth.providers.users.model.
         'user_model' => null,
         'page' => [
