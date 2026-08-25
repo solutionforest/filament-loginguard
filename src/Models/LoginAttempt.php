@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
-use WhichBrowser\Parser;
+use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
 
 /**
  * @property int $id
@@ -24,6 +24,7 @@ use WhichBrowser\Parser;
 class LoginAttempt extends Model
 {
     use HasFactory;
+    use ParsesUserAgent;
 
     protected $table = 'filament_loginguard_attempts';
 
@@ -42,20 +43,6 @@ class LoginAttempt extends Model
     public function isLocked(): bool
     {
         return $this->locked_until !== null && $this->locked_until->isFuture();
-    }
-
-    /**
-     * Human-readable device description, e.g. "Chrome on macOS".
-     */
-    public function getDeviceNameAttribute(): ?string
-    {
-        if ($this->user_agent === null || $this->user_agent === '') {
-            return null;
-        }
-
-        $parser = new Parser($this->user_agent);
-
-        return trim("{$parser->browser->getName()} on {$parser->os->getName()}");
     }
 
     public function unlock(): void

@@ -5,6 +5,7 @@ namespace SolutionForest\FilamentLoginGuard;
 use Filament\Contracts\Plugin;
 use Filament\Panel;
 use SolutionForest\FilamentLoginGuard\Pages\LoginGuard;
+use SolutionForest\FilamentLoginGuard\Pages\UserSessions;
 
 class FilamentLoginGuardPlugin implements Plugin
 {
@@ -17,6 +18,7 @@ class FilamentLoginGuardPlugin implements Plugin
     {
         $panel->pages([
             LoginGuard::class,
+            UserSessions::class,
         ]);
     }
 

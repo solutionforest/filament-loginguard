@@ -67,4 +67,25 @@ return [
         // is not registered anywhere.
         'authorize' => null,
     ],
+
+    // Active user sessions (requires SESSION_DRIVER=database). Lists sessions,
+    // shows "last active" (Laravel updates `last_activity` on every request,
+    // including Livewire clicks) and offers a one-click Revoke.
+    'sessions' => [
+        'enabled' => true,
+        'table' => 'sessions',
+        // A session whose last_activity is within this many minutes is "online".
+        'online_threshold_minutes' => 5,
+        // Eloquent model used to resolve a session's user_id. null = auth.providers.users.model.
+        'user_model' => null,
+        'page' => [
+            'slug' => 'user-sessions',
+            'navigation_label' => null,
+            'navigation_icon' => 'heroicon-o-computer-desktop',
+            'navigation_group' => null,
+            'navigation_sort' => null,
+            // Same authorize semantics as admin_page.authorize.
+            'authorize' => null,
+        ],
+    ],
 ];

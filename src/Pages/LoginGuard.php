@@ -111,6 +111,7 @@ class LoginGuard extends Page implements HasTable
                     ->searchable(),
                 TextColumn::make('device_name')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.user_agent'))
+                    ->placeholder('-')
                     ->tooltip(fn (LoginAttempt $record): ?string => $record->user_agent),
                 TextColumn::make('attempts')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.attempts'))
@@ -125,12 +126,14 @@ class LoginGuard extends Page implements HasTable
                         ? $record->locked_until->diffForHumans()
                         : null)
                     ->badge()
+                    ->placeholder('-')
                     ->tooltip(fn (LoginAttempt $record): ?string => $record->locked_until?->toDateTimeString())
                     ->color(fn (LoginAttempt $record): string => $record->isLocked() ? 'danger' : 'gray'),
                 TextColumn::make('last_attempt_at')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.last_attempt_at'))
                     ->state(fn (LoginAttempt $record): ?string => $record->last_attempt_at?->diffForHumans())
                     ->badge()
+                    ->placeholder('-')
                     ->color('gray')
                     ->tooltip(fn (LoginAttempt $record): ?string => $record->last_attempt_at?->toDateTimeString()),
             ])

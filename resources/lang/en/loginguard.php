@@ -39,4 +39,23 @@ return [
             'duration' => 'Blocked for :minutes minutes.',
         ],
     ],
+    'sessions' => [
+        'navigation_label' => 'User Sessions',
+        'title' => 'User Sessions',
+        'heading' => 'Active Sessions',
+        'table' => [
+            'columns' => [
+                'user' => 'User',
+                'ip' => 'IP Address',
+                'device' => 'Device',
+                'last_active' => 'Last active',
+            ],
+            'online_now' => 'Online now',
+            'actions' => [
+                'revoke' => 'Revoke',
+                'revoke_many' => 'Revoke selected',
+                'revoked' => 'Session revoked',
+            ],
+        ],
+    ],
 ];
