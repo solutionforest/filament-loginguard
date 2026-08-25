@@ -114,6 +114,13 @@ class UserSessions extends Page implements HasTable
                     ->state(fn (UserSession $record): string => $record->last_active_label)
                     ->badge()
                     ->color(fn (UserSession $record): string => $record->is_online ? 'success' : 'gray'),
+                TextColumn::make('is_new_device')
+                    ->label(__('filament-loginguard::loginguard.sessions.table.new_device'))
+                    ->state(fn (UserSession $record): ?string => $record->is_new_device
+                        ? __('filament-loginguard::loginguard.sessions.table.new')
+                        : null)
+                    ->badge()
+                    ->color('warning'),
             ])
             ->recordActions([
                 Action::make('revoke')

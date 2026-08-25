@@ -7,6 +7,7 @@ use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use SolutionForest\FilamentLoginGuard\Events\LoginLockedOut;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 
 class AuthenticationListener
@@ -64,19 +65,28 @@ class AuthenticationListener
             return;
         }
 
+        // Extension hook: apps can listen for Slack/webhook alerting etc.
+        LoginLockedOut::dispatch(ip: $ip, email: $email, lockedForMinutes: $result->minutes);
+
         $this->service->notifyLockout($ip, $email, $result->minutes);
 
         throw $this->lockoutException($result->secondsRemaining);
     }
 
     /**
-     * Successful login: clear counters/locks for this IP and (if known) this email.
+     * Successful login: record the success on the (ip, email) row, remember the
+     * device fingerprint, and enforce the per-user concurrent session limit.
      */
     public function handleLogin(Login $event): void
     {
-        if (! $this->service->isEnabled() || ! $this->shouldTrackGuard($event->guard)) {
+        $guardTracked = $this->service->isEnabled() && $this->shouldTrackGuard($event->guard);
+        $sessionsEnabled = (bool) config('filament-loginguard.sessions.page.enabled', true);
+
+        if (! $guardTracked && ! $sessionsEnabled) {
             return;
         }
+
+        $ip = (string) request()->ip();
 
         $email = null;
 
@@ -88,7 +98,22 @@ class AuthenticationListener
             }
         }
 
-        $this->service->resetForSuccess((string) request()->ip(), $email);
+        if ($guardTracked) {
+            if ($email !== null) {
+                $this->service->recordSuccess($ip, $email);
+            } else {
+                $this->service->resetForSuccess($ip, null);
+            }
+        }
+
+        if ($sessionsEnabled) {
+            $userId = $event->user->getAuthIdentifier();
+
+            if (is_numeric($userId) && (int) $userId > 0) {
+                $this->service->recordDevice((int) $userId, request()->userAgent(), $email);
+                $this->service->enforceConcurrentLimit((int) $userId);
+            }
+        }
     }
 
     private function emailFromCredentials(array $credentials): ?string

@@ -3,11 +3,16 @@
 namespace SolutionForest\FilamentLoginGuard;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
+use SolutionForest\FilamentLoginGuard\Models\KnownDevice;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\UserSession;
 use SolutionForest\FilamentLoginGuard\Notifications\AccountLockedNotification;
+use SolutionForest\FilamentLoginGuard\Notifications\NewDeviceLoginNotification;
+use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
 
 final class LoginGuardService
 {
@@ -202,6 +207,115 @@ final class LoginGuardService
             'locked_until' => null,
             'last_attempt_at' => null,
         ]);
+    }
+
+    /**
+     * Record a successful login: stamp the success counter and clear the failed
+     * attempts / lockout state for this (ip, email) row.
+     */
+    public function recordSuccess(string $ip, string $email): void
+    {
+        if (! $this->isEnabled()) {
+            return;
+        }
+
+        /** @var LoginAttempt $row */
+        $row = LoginAttempt::query()->firstOrCreate(['ip' => $ip, 'email' => $email]);
+
+        $row->forceFill([
+            'attempts' => 0,
+            'lockout_count' => 0,
+            'locked_until' => null,
+            'last_attempt_at' => null,
+            'success_count' => (int) $row->success_count + 1,
+            'last_success_at' => Carbon::now(),
+        ])->save();
+    }
+
+    /**
+     * Record the browser+platform fingerprint for a user on login. When the device
+     * is seen for the first time, notify the configured recipients (if any).
+     */
+    public function recordDevice(int $userId, ?string $userAgent, ?string $email): void
+    {
+        if (! (bool) config('filament-loginguard.sessions.new_device.enabled', true)) {
+            return;
+        }
+
+        $fingerprint = ParsesUserAgent::parseDeviceName($userAgent);
+
+        if ($fingerprint === null) {
+            return;
+        }
+
+        /** @var KnownDevice $device */
+        $device = KnownDevice::query()->firstOrCreate(
+            ['user_id' => $userId, 'fingerprint' => $fingerprint],
+            ['first_seen_at' => Carbon::now()],
+        );
+
+        if ($device->wasRecentlyCreated) {
+            $this->notifyNewDevice($fingerprint, $email ?? (string) $userId);
+        }
+    }
+
+    /**
+     * Evict the oldest sessions beyond the per-user concurrent limit, making room
+     * for the session that is being created right now.
+     */
+    public function enforceConcurrentLimit(int $userId): void
+    {
+        $limit = (int) config('filament-loginguard.sessions.concurrent_limit', 0);
+
+        if ($limit <= 0) {
+            return;
+        }
+
+        /** @var Collection<int, UserSession> $sessions */
+        $sessions = UserSession::query()
+            ->where('user_id', $userId)
+            ->orderByDesc('last_activity')
+            ->get();
+
+        if ($sessions->count() < $limit) {
+            return;
+        }
+
+        $sessions->slice($limit - 1)->each->delete();
+    }
+
+    /**
+     * Send the new-device notification to the configured recipients.
+     */
+    private function notifyNewDevice(string $fingerprint, string $email): void
+    {
+        if (! (bool) config('filament-loginguard.sessions.new_device.notification.enabled', false)) {
+            return;
+        }
+
+        $recipients = (array) config('filament-loginguard.sessions.new_device.notification.to', []);
+
+        if ($recipients === []) {
+            return;
+        }
+
+        $notification = new NewDeviceLoginNotification(
+            email: $email,
+            device: $fingerprint,
+            ip: (string) request()->ip(),
+        );
+
+        $queue = config('filament-loginguard.sessions.new_device.notification.queue', false);
+
+        foreach ($recipients as $recipient) {
+            $notifiable = Notification::route('mail', $recipient);
+
+            if ($queue !== false) {
+                $notifiable->notify($notification->onQueue((string) $queue));
+            } else {
+                $notifiable->notifyNow($notification);
+            }
+        }
     }
 
     /**

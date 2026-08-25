@@ -19,6 +19,7 @@ use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
  * @property-read string|null $user_email
  * @property-read Carbon $last_active_at
  * @property-read bool $is_online
+ * @property-read bool $is_new_device
  * @property-read string $last_active_label
  */
 class UserSession extends Model
@@ -76,5 +77,30 @@ class UserSession extends Model
         return $this->is_online
             ? (string) __('filament-loginguard::loginguard.sessions.table.online_now')
             : $this->last_active_at->diffForHumans();
+    }
+
+    public function getIsNewDeviceAttribute(): bool
+    {
+        if (! (bool) config('filament-loginguard.sessions.new_device.enabled', true)) {
+            return false;
+        }
+
+        if ($this->user_id === null) {
+            return false;
+        }
+
+        $fingerprint = ParsesUserAgent::parseDeviceName($this->user_agent);
+
+        if ($fingerprint === null) {
+            return false;
+        }
+
+        $windowHours = (int) config('filament-loginguard.sessions.new_device.window_hours', 24);
+
+        return KnownDevice::query()
+            ->where('user_id', $this->user_id)
+            ->where('fingerprint', $fingerprint)
+            ->where('first_seen_at', '>=', now()->subHours($windowHours))
+            ->exists();
     }
 }

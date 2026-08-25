@@ -4,7 +4,9 @@ use Carbon\Carbon;
 use Illuminate\Auth\Events\Attempting;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Validation\ValidationException;
+use SolutionForest\FilamentLoginGuard\Events\LoginLockedOut;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestUser;
@@ -240,6 +242,31 @@ it('resets counters on successful login', function () {
         ->and($row->lockout_count)->toBe(0)
         ->and($row->locked_until)->toBeNull()
         ->and($row->last_attempt_at)->toBeNull();
+});
+
+it('records successful logins on the attempts row', function () {
+    ($this->failed)();
+
+    event(new Login('web', new TestUser(email: 'a@example.com'), false));
+
+    $row = LoginAttempt::query()->sole();
+
+    expect($row->success_count)->toBe(1)
+        ->and($row->last_success_at->equalTo(now()))->toBeTrue()
+        ->and($row->attempts)->toBe(0);
+});
+
+it('dispatches LoginLockedOut when a lockout is triggered', function () {
+    config()->set('filament-loginguard.lockout.max_attempts', 2);
+
+    Event::fake([LoginLockedOut::class]);
+
+    ($this->failed)();
+    ($this->failed)();
+
+    Event::assertDispatched(LoginLockedOut::class, fn (LoginLockedOut $event): bool => $event->ip === '1.2.3.4'
+        && $event->email === 'a@example.com'
+        && $event->lockedForMinutes === 15);
 });
 
 it('only resets the row of the account that logged in', function () {

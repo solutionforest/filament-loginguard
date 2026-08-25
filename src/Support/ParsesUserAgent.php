@@ -11,11 +11,20 @@ trait ParsesUserAgent
      */
     public function getDeviceNameAttribute(): ?string
     {
-        if ($this->user_agent === null || $this->user_agent === '') {
+        return static::parseDeviceName($this->user_agent);
+    }
+
+    /**
+     * Parse a user agent into a "browser on os" fingerprint, e.g. "Chrome on macOS".
+     * Returns null when nothing meaningful can be extracted.
+     */
+    public static function parseDeviceName(?string $userAgent): ?string
+    {
+        if ($userAgent === null || $userAgent === '') {
             return null;
         }
 
-        $parser = new Parser($this->user_agent);
+        $parser = new Parser($userAgent);
 
         $parts = array_values(array_filter([
             $parser->browser->getName(),

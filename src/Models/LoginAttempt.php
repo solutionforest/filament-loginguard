@@ -15,8 +15,10 @@ use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
  * @property string|null $user_agent
  * @property int $attempts
  * @property int $lockout_count
+ * @property int $success_count
  * @property Carbon|null $locked_until
  * @property Carbon|null $last_attempt_at
+ * @property Carbon|null $last_success_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read string|null $device_name
@@ -35,8 +37,10 @@ class LoginAttempt extends Model
         return [
             'attempts' => 'integer',
             'lockout_count' => 'integer',
+            'success_count' => 'integer',
             'locked_until' => 'datetime',
             'last_attempt_at' => 'datetime',
+            'last_success_at' => 'datetime',
         ];
     }
 

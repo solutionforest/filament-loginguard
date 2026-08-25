@@ -98,6 +98,21 @@ return [
         'online_threshold_seconds' => 60,
         // Eloquent model used to resolve a session's user_id. null = auth.providers.users.model.
         'user_model' => null,
+        // Max concurrent sessions per user; null = unlimited. Oldest sessions are
+        // evicted to make room when the limit is reached.
+        'concurrent_limit' => null,
+        // Sessions whose browser+platform fingerprint was first seen within this
+        // window are flagged "New" on the sessions page.
+        'new_device' => [
+            'enabled' => true,
+            'window_hours' => 24,
+            'notification' => [
+                // Disabled by default: the plugin cannot know who to notify.
+                'enabled' => false,
+                'to' => [],
+                'queue' => false,
+            ],
+        ],
         'page' => [
             'enabled' => true,
             'slug' => 'user-sessions',
