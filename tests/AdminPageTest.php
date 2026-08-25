@@ -43,6 +43,19 @@ it('renders the blocked attempts page', function () {
         ->assertDontSee('Lockouts');
 });
 
+it('shows the remaining lock time as a relative string', function () {
+    LoginAttempt::factory()->create([
+        'ip' => '1.2.3.4',
+        'email' => 'a@example.com',
+        'attempts' => 3,
+        'locked_until' => now()->addMinutes(15),
+    ]);
+
+    Livewire::test(LoginGuard::class)
+        ->assertSuccessful()
+        ->assertSee('15 minutes from now');
+});
+
 it('parses user agents into device names', function () {
     $record = LoginAttempt::factory()->create([
         'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
