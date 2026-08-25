@@ -12,6 +12,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Filesystem\Filesystem;
 use Livewire\Features\SupportTesting\Testable;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupCommand;
+use SolutionForest\FilamentLoginGuard\Commands\CleanupSessionsCommand;
 use SolutionForest\FilamentLoginGuard\Listeners\AuthenticationListener;
 use SolutionForest\FilamentLoginGuard\Testing\TestsFilamentLoginGuard;
 use Spatie\LaravelPackageTools\Commands\InstallCommand;
@@ -107,6 +108,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
     {
         return [
             CleanupCommand::class,
+            CleanupSessionsCommand::class,
         ];
     }
 

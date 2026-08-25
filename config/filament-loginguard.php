@@ -87,7 +87,11 @@ return [
 
     // Active user sessions (requires SESSION_DRIVER=database). Lists sessions,
     // shows "last active" (Laravel updates `last_activity` on every request,
-    // including Livewire clicks) and offers a one-click Revoke.
+    // including Livewire clicks) and offers a one-click Revoke. Closing the
+    // browser (without logout) or backgrounding the tab simply stops updating
+    // `last_activity`, so the session ages out naturally and expires after
+    // `session.lifetime`; sweep expired rows with the
+    // `filament-loginguard:cleanup-sessions` command.
     'sessions' => [
         'table' => 'sessions',
         // A session whose last_activity is within this many seconds is "online".
