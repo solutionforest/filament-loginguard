@@ -25,15 +25,15 @@ class LoginGuard extends Page implements HasTable
 
     /**
      * Filament v5 pages default to "any authenticated panel user"; gate the page
-     * behind the attempts_page config and an optional ability.
+     * behind the attempts.page config and an optional ability.
      */
     public static function canAccess(): bool
     {
-        if (! (bool) config('filament-loginguard.attempts_page.enabled', true)) {
+        if (! (bool) config('filament-loginguard.attempts.page.enabled', true)) {
             return false;
         }
 
-        $ability = config('filament-loginguard.attempts_page.authorize');
+        $ability = config('filament-loginguard.attempts.page.authorize');
 
         if (blank($ability)) {
             return true;
@@ -46,43 +46,43 @@ class LoginGuard extends Page implements HasTable
 
     public static function shouldRegisterNavigation(): bool
     {
-        return (bool) config('filament-loginguard.attempts_page.enabled', true);
+        return (bool) config('filament-loginguard.attempts.page.enabled', true);
     }
 
     public static function getDefaultSlug(): string
     {
-        return (string) (config('filament-loginguard.attempts_page.slug') ?: 'login-guard');
+        return (string) (config('filament-loginguard.attempts.page.slug') ?: 'login-guard');
     }
 
     public static function getCluster(): ?string
     {
-        $cluster = config('filament-loginguard.attempts_page.cluster');
+        $cluster = config('filament-loginguard.attempts.page.cluster');
 
         return is_string($cluster) && is_subclass_of($cluster, Cluster::class) ? $cluster : null;
     }
 
     public static function getNavigationLabel(): string
     {
-        return (string) (config('filament-loginguard.attempts_page.navigation_label')
+        return (string) (config('filament-loginguard.attempts.page.navigation_label')
             ?: __('filament-loginguard::loginguard.page.navigation_label'));
     }
 
     public static function getNavigationIcon(): string
     {
-        return (string) (config('filament-loginguard.attempts_page.navigation_icon')
+        return (string) (config('filament-loginguard.attempts.page.navigation_icon')
             ?: 'heroicon-o-shield-exclamation');
     }
 
     public static function getNavigationGroup(): ?string
     {
-        $group = config('filament-loginguard.attempts_page.navigation_group');
+        $group = config('filament-loginguard.attempts.page.navigation_group');
 
         return is_string($group) ? $group : null;
     }
 
     public static function getNavigationSort(): ?int
     {
-        $sort = config('filament-loginguard.attempts_page.navigation_sort');
+        $sort = config('filament-loginguard.attempts.page.navigation_sort');
 
         return is_int($sort) ? $sort : null;
     }

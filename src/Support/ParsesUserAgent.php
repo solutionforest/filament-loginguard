@@ -17,6 +17,11 @@ trait ParsesUserAgent
 
         $parser = new Parser($this->user_agent);
 
-        return trim("{$parser->browser->getName()} on {$parser->os->getName()}");
+        $parts = array_values(array_filter([
+            $parser->browser->getName(),
+            $parser->os->getName(),
+        ]));
+
+        return $parts === [] ? null : implode(' on ', $parts);
     }
 }

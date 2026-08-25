@@ -15,6 +15,6 @@ it('merges the config under the filament-loginguard key', function () {
         ->and(config('filament-loginguard.notifications.mail.to'))->toBe([])
         ->and(config('filament-loginguard.notifications.mail.cooldown_minutes'))->toBe(60)
         ->and(config('filament-loginguard.notifications.mail.queue'))->toBeFalse()
-        ->and(config('filament-loginguard.attempts_page.enabled'))->toBeTrue()
-        ->and(config('filament-loginguard.attempts_page.slug'))->toBe('login-guard');
+        ->and(config('filament-loginguard.attempts.page.enabled'))->toBeTrue()
+        ->and(config('filament-loginguard.attempts.page.slug'))->toBe('login-guard');
 });

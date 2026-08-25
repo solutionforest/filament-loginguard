@@ -4,6 +4,7 @@ namespace SolutionForest\FilamentLoginGuard\Pages;
 
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
+use Filament\Clusters\Cluster;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Tables\Columns\TextColumn;
@@ -48,6 +49,13 @@ class UserSessions extends Page implements HasTable
         return (string) (config('filament-loginguard.sessions.page.slug') ?: 'user-sessions');
     }
 
+    public static function getCluster(): ?string
+    {
+        $cluster = config('filament-loginguard.sessions.page.cluster');
+
+        return is_string($cluster) && is_subclass_of($cluster, Cluster::class) ? $cluster : null;
+    }
+
     public static function getNavigationLabel(): string
     {
         return (string) (config('filament-loginguard.sessions.page.navigation_label')
@@ -87,7 +95,7 @@ class UserSessions extends Page implements HasTable
     public function table(Table $table): Table
     {
         return $table
-            ->query(UserSession::query())
+            ->query(UserSession::query()->whereNotNull('user_id'))
             ->defaultSort('last_activity', 'desc')
             ->columns([
                 TextColumn::make('user_email')
@@ -137,7 +145,7 @@ class UserSessions extends Page implements HasTable
 
     protected static function isEnabled(): bool
     {
-        return (bool) config('filament-loginguard.sessions.enabled', true)
+        return (bool) config('filament-loginguard.sessions.page.enabled', true)
             && Schema::hasTable((string) config('filament-loginguard.sessions.table', 'sessions'));
     }
 }
