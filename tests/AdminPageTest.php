@@ -39,7 +39,7 @@ it('renders the blocked attempts page', function () {
     Livewire::test(LoginGuard::class)
         ->assertSuccessful()
         ->assertSee('1.2.3.4')
-        ->assertSee('Chrome 151 on macOS')
+        ->assertSee('Chrome on macOS')
         ->assertDontSee('Lockouts');
 });
 
@@ -48,7 +48,7 @@ it('parses user agents into device names', function () {
         'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
     ]);
 
-    expect($record->device_name)->toBe('Chrome 151 on macOS');
+    expect($record->device_name)->toBe('Chrome on macOS');
 
     $record->update(['user_agent' => null]);
 

@@ -45,7 +45,7 @@ class LoginAttempt extends Model
     }
 
     /**
-     * Human-readable device description, e.g. "Chrome 151 on OS X 10.15.7".
+     * Human-readable device description, e.g. "Chrome on macOS".
      */
     public function getDeviceNameAttribute(): ?string
     {
@@ -55,7 +55,7 @@ class LoginAttempt extends Model
 
         $parser = new Parser($this->user_agent);
 
-        return trim("{$parser->browser->toString()} on {$parser->os->toString()}");
+        return trim("{$parser->browser->getName()} on {$parser->os->getName()}");
     }
 
     public function unlock(): void
