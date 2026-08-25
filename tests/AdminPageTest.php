@@ -53,7 +53,7 @@ it('shows the remaining lock time as a relative string', function () {
 
     Livewire::test(LoginGuard::class)
         ->assertSuccessful()
-        ->assertSee('15 minutes from now');
+        ->assertSee('15 minutes');
 });
 
 it('parses user agents into device names', function () {

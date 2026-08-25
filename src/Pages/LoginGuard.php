@@ -122,7 +122,7 @@ class LoginGuard extends Page implements HasTable
                 TextColumn::make('locked_until')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.locked_until'))
                     ->state(fn (LoginAttempt $record): ?string => $record->isLocked()
-                        ? $record->locked_until->diffForHumans()
+                        ? $record->locked_until->longAbsoluteDiffForHumans()
                         : null)
                     ->tooltip(fn (LoginAttempt $record): ?string => $record->locked_until?->toDateTimeString())
                     ->color(fn (LoginAttempt $record): string => $record->isLocked() ? 'danger' : 'gray'),
