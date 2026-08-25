@@ -5,7 +5,7 @@
 [![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/solutionforest/filament-loginguard/fix-code-style.yml?branch=5.x&label=code%20style&style=flat-square)](https://github.com/solutionforest/filament-loginguard/actions?query=workflow%3A"fix-code-style"+branch%3A5.x)
 [![Total Downloads](https://img.shields.io/packagist/dt/solution-forest/filament-loginguard.svg?style=flat-square)](https://packagist.org/packages/solution-forest/filament-loginguard)
 
-Brute force login protection for Filament panels and Laravel apps. Failed login attempts are recorded per IP/email pair in a database table, along with the browser that made them; once a threshold is reached the IP and/or email is locked out for a configurable, escalating duration. Whitelists bypass protection entirely, admins are notified by email on lockouts, and a panel page lets you inspect and unblock recorded attempts.
+Brute force login protection and session management for Filament panels and Laravel apps. Failed login attempts are recorded per IP/email pair in a database table, along with the browser that made them; once a threshold is reached the IP and/or email is locked out for a configurable, escalating duration. Whitelists bypass protection entirely, admins are notified by email on lockouts, and a panel page lets you inspect and unblock recorded attempts. A second panel page lists active sessions (requires `SESSION_DRIVER=database`), flags logins from new devices, enforces a per-user concurrent session limit, and offers a one-click Revoke.
 
 > [!NOTE]
 > Filament already throttles its login page at 5 attempts per minute per IP. This package adds the missing **lockout layer** on top of that: persistent tracking, escalating bans, per-email protection and an admin UI.
@@ -45,7 +45,7 @@ php artisan vendor:publish --tag="filament-loginguard-views"
 php artisan vendor:publish --tag="filament-loginguard-translations"
 ```
 
-To enable the **admin page** (view / unblock recorded attempts), register the plugin in your panel provider, e.g. `app/Providers/Filament/AdminPanelProvider.php`:
+To enable the **admin pages** (Login Attempts: view / unblock recorded attempts; User Sessions: list / revoke active sessions), register the plugin in your panel provider, e.g. `app/Providers/Filament/AdminPanelProvider.php`:
 
 ```php
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
@@ -58,7 +58,7 @@ public function panel(Panel $panel): Panel
 }
 ```
 
-The core protection works **without** registering the plugin — only the admin page needs it.
+The core protection works **without** registering the plugin — only the admin pages need it. Each page can also be disabled independently via `pages.attempts.enabled` / `pages.sessions.enabled`.
 
 ## How it works
 
@@ -79,6 +79,15 @@ Lockout semantics:
 - A lock is **never extended** by further attempts while it is active; a successful login resets everything (forgiving legitimate owners).
 - The lockout message is rendered in the Filament login form (`data.email` error key) and as a standard `email` validation error in non-Filament forms (redirect back for web requests, 422 for JSON).
 - Localhost (`127.0.0.1`, `::1`) is whitelisted by default.
+- A `LoginLockedOut` event is dispatched on every lockout — listen for it to wire up custom alerting (Slack, webhooks, etc.) alongside or instead of the built-in email notification.
+
+## Session management
+
+Requires `SESSION_DRIVER=database`. The **User Sessions** admin page lists every active session with a human-readable "last active" state (Laravel updates `last_activity` on every request, including Livewire clicks) and a one-click Revoke.
+
+- **New-device detection**: each login's browser+platform is fingerprinted (`sessions.new_device`); a session is flagged "New" on the page when its fingerprint was first seen within `window_hours`, and an optional email notifies the configured recipients the first time a device is seen.
+- **Concurrent session limits**: set `sessions.concurrent_limit` to cap sessions per user — the oldest sessions are evicted to make room when a new login would exceed the limit.
+- Closing the browser without logging out (or backgrounding the tab) simply stops updating `last_activity`, so the session ages out naturally and expires after `session.lifetime`; sweep expired rows with the `filament-loginguard:cleanup-sessions` command.
 
 ## Configuration
 
@@ -178,11 +187,27 @@ return [
 
 ## Maintenance
 
-Delete stale, expired records (attempts outside the decay window with no active lock):
+Delete stale, expired attempt records (outside the decay window with no active lock):
 
 ```bash
 php artisan filament-loginguard:cleanup
 php artisan filament-loginguard:cleanup --all   # delete every record
+```
+
+Delete expired session rows (Laravel's session garbage collection is probabilistic, so rows from closed browsers can linger):
+
+```bash
+php artisan filament-loginguard:cleanup-sessions
+php artisan filament-loginguard:cleanup-sessions --all   # delete every session
+```
+
+Schedule both in `routes/console.php` for automatic upkeep:
+
+```php
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('filament-loginguard:cleanup')->daily();
+Schedule::command('filament-loginguard:cleanup-sessions')->hourly();
 ```
 
 ## Testing
