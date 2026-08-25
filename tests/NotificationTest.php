@@ -10,10 +10,10 @@ use SolutionForest\FilamentLoginGuard\Notifications\AccountLockedNotification;
 beforeEach(function () {
     Carbon::setTestNow('2026-01-01 00:00:00');
     request()->server->set('REMOTE_ADDR', '1.2.3.4');
-    config()->set('filament-loginguard.whitelisted_ips', []);
-    config()->set('filament-loginguard.max_attempts', 2);
-    config()->set('filament-loginguard.notifications.enabled', true);
-    config()->set('filament-loginguard.notifications.mail.to', ['admin@example.com']);
+    config()->set('filament-loginguard.lockout.whitelist.ips', []);
+    config()->set('filament-loginguard.lockout.max_attempts', 2);
+    config()->set('filament-loginguard.lockout.notifications.enabled', true);
+    config()->set('filament-loginguard.lockout.notifications.mail.to', ['admin@example.com']);
 
     // Dispatch a Failed event, swallowing the ValidationException that lockout-triggering
     // attempts throw by design.
@@ -46,7 +46,7 @@ it('notifies recipients when a lockout is triggered', function () {
 
 it('sends nothing when no recipients are configured', function () {
     Notification::fake();
-    config()->set('filament-loginguard.notifications.mail.to', []);
+    config()->set('filament-loginguard.lockout.notifications.mail.to', []);
 
     ($this->failed)();
     ($this->failed)();
@@ -56,7 +56,7 @@ it('sends nothing when no recipients are configured', function () {
 
 it('throttles notifications per ip within the cooldown window', function () {
     Notification::fake();
-    config()->set('filament-loginguard.notifications.mail.cooldown_minutes', 60);
+    config()->set('filament-loginguard.lockout.notifications.mail.cooldown_minutes', 60);
 
     // First lockout.
     ($this->failed)();
@@ -75,7 +75,7 @@ it('throttles notifications per ip within the cooldown window', function () {
 
 it('sends again after the cooldown expires', function () {
     Notification::fake();
-    config()->set('filament-loginguard.notifications.mail.cooldown_minutes', 60);
+    config()->set('filament-loginguard.lockout.notifications.mail.cooldown_minutes', 60);
 
     ($this->failed)();
     ($this->failed)();

@@ -23,7 +23,7 @@ class CleanupCommand extends Command
             return self::SUCCESS;
         }
 
-        $windowMinutes = (int) config('filament-loginguard.attempts_window_minutes', 30);
+        $windowMinutes = (int) config('filament-loginguard.lockout.attempts_window_minutes', 30);
 
         $deleted = $query
             ->where('last_attempt_at', '<', now()->subMinutes($windowMinutes))

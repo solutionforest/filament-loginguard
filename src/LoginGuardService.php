@@ -13,7 +13,7 @@ final class LoginGuardService
 {
     public function isEnabled(): bool
     {
-        return (bool) config('filament-loginguard.enabled', true);
+        return (bool) config('filament-loginguard.lockout.enabled', true);
     }
 
     /**
@@ -21,7 +21,7 @@ final class LoginGuardService
      */
     public function isWhitelisted(string $ip, ?string $email): bool
     {
-        if (in_array($ip, (array) config('filament-loginguard.whitelisted_ips', []), true)) {
+        if (in_array($ip, (array) config('filament-loginguard.lockout.whitelist.ips', []), true)) {
             return true;
         }
 
@@ -29,7 +29,7 @@ final class LoginGuardService
             return false;
         }
 
-        return in_array($email, array_map('strtolower', (array) config('filament-loginguard.whitelisted_emails', [])), true);
+        return in_array($email, array_map('strtolower', (array) config('filament-loginguard.lockout.whitelist.emails', [])), true);
     }
 
     public function isLocked(string $ip, ?string $email): bool
@@ -59,10 +59,10 @@ final class LoginGuardService
     public function recordFailure(string $ip, string $email, ?string $userAgent = null): LockoutResult
     {
         $now = Carbon::now();
-        $maxAttempts = (int) config('filament-loginguard.max_attempts', 10);
-        $windowMinutes = (int) config('filament-loginguard.attempts_window_minutes', 30);
-        $trackIp = (bool) config('filament-loginguard.tracking.per_ip', true);
-        $trackEmail = (bool) config('filament-loginguard.tracking.per_email', true);
+        $maxAttempts = (int) config('filament-loginguard.lockout.max_attempts', 10);
+        $windowMinutes = (int) config('filament-loginguard.lockout.attempts_window_minutes', 30);
+        $trackIp = (bool) config('filament-loginguard.lockout.tracking.per_ip', true);
+        $trackEmail = (bool) config('filament-loginguard.lockout.tracking.per_email', true);
 
         /** @var LoginAttempt $row */
         $row = LoginAttempt::query()->firstOrCreate(['ip' => $ip, 'email' => $email]);
@@ -159,13 +159,13 @@ final class LoginGuardService
      */
     public function durationForLockoutCount(int $lockoutCount): int
     {
-        $baseMinutes = (int) config('filament-loginguard.lockout_minutes', 15);
+        $baseMinutes = (int) config('filament-loginguard.lockout.lockout_minutes', 15);
 
         if ($lockoutCount <= 1) {
             return $baseMinutes;
         }
 
-        $banHours = (array) config('filament-loginguard.ban_hours', []);
+        $banHours = (array) config('filament-loginguard.lockout.ban_hours', []);
 
         if ($banHours === []) {
             return $baseMinutes;
@@ -209,17 +209,17 @@ final class LoginGuardService
      */
     public function notifyLockout(string $ip, string $email, int $minutes): bool
     {
-        if (! (bool) config('filament-loginguard.notifications.enabled', true)) {
+        if (! (bool) config('filament-loginguard.lockout.notifications.enabled', true)) {
             return false;
         }
 
-        $recipients = (array) config('filament-loginguard.notifications.mail.to', []);
+        $recipients = (array) config('filament-loginguard.lockout.notifications.mail.to', []);
 
         if ($recipients === []) {
             return false;
         }
 
-        $cooldownMinutes = (int) config('filament-loginguard.notifications.mail.cooldown_minutes', 60);
+        $cooldownMinutes = (int) config('filament-loginguard.lockout.notifications.mail.cooldown_minutes', 60);
         $cacheKey = 'filament-loginguard:notified:' . $ip;
 
         if ($cooldownMinutes > 0 && cache()->has($cacheKey)) {
@@ -230,7 +230,7 @@ final class LoginGuardService
 
         $notification = new AccountLockedNotification(ip: $ip, email: $email, minutes: $minutes);
 
-        $queue = config('filament-loginguard.notifications.mail.queue', false);
+        $queue = config('filament-loginguard.lockout.notifications.mail.queue', false);
 
         foreach ($recipients as $recipient) {
             $notifiable = Notification::route('mail', $recipient);
@@ -250,8 +250,8 @@ final class LoginGuardService
      */
     private function matchingRowsQuery(string $ip, ?string $email): Builder
     {
-        $trackIp = (bool) config('filament-loginguard.tracking.per_ip', true);
-        $trackEmail = (bool) config('filament-loginguard.tracking.per_email', true);
+        $trackIp = (bool) config('filament-loginguard.lockout.tracking.per_ip', true);
+        $trackEmail = (bool) config('filament-loginguard.lockout.tracking.per_email', true);
 
         return LoginAttempt::query()->where(function (Builder $query) use ($ip, $email, $trackIp, $trackEmail): void {
             // Per-pair semantics when both aggregates are off: only the exact (ip, email) row counts.

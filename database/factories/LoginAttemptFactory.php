@@ -24,9 +24,9 @@ class LoginAttemptFactory extends Factory
     public function locked(): static
     {
         return $this->state(fn (): array => [
-            'attempts' => (int) config('filament-loginguard.max_attempts'),
+            'attempts' => (int) config('filament-loginguard.lockout.max_attempts'),
             'lockout_count' => 1,
-            'locked_until' => now()->addMinutes((int) config('filament-loginguard.lockout_minutes')),
+            'locked_until' => now()->addMinutes((int) config('filament-loginguard.lockout.lockout_minutes')),
         ]);
     }
 }

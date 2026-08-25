@@ -100,7 +100,7 @@ class AuthenticationListener
 
     private function shouldTrackGuard(string $guard): bool
     {
-        $guards = (array) config('filament-loginguard.tracking.guards', []);
+        $guards = (array) config('filament-loginguard.lockout.tracking.guards', []);
 
         return $guards === [] || in_array($guard, $guards, true);
     }

@@ -13,8 +13,8 @@ beforeEach(function () {
     Carbon::setTestNow('2026-01-01 00:00:00');
     request()->server->set('REMOTE_ADDR', '1.2.3.4');
     request()->headers->set('User-Agent', 'Mozilla/5.0 (TestBrowser) Chrome/151.0.0.0');
-    config()->set('filament-loginguard.whitelisted_ips', []);
-    config()->set('filament-loginguard.notifications.enabled', false);
+    config()->set('filament-loginguard.lockout.whitelist.ips', []);
+    config()->set('filament-loginguard.lockout.notifications.enabled', false);
 
     // Dispatch a Failed event, swallowing the ValidationException that lockout-triggering
     // attempts throw by design.
@@ -47,7 +47,7 @@ it('records failed attempts', function () {
 });
 
 it('locks out when the max attempts are reached', function () {
-    config()->set('filament-loginguard.max_attempts', 3);
+    config()->set('filament-loginguard.lockout.max_attempts', 3);
 
     ($this->failed)();
     ($this->failed)();
@@ -64,7 +64,7 @@ it('locks out when the max attempts are reached', function () {
 });
 
 it('rejects locked keys before credential work', function () {
-    config()->set('filament-loginguard.max_attempts', 2);
+    config()->set('filament-loginguard.lockout.max_attempts', 2);
 
     ($this->failed)();
     ($this->failed)();
@@ -79,7 +79,7 @@ it('rejects locked keys before credential work', function () {
 });
 
 it('escalates lockout durations', function () {
-    config()->set('filament-loginguard.max_attempts', 3);
+    config()->set('filament-loginguard.lockout.max_attempts', 3);
 
     // First lockout: 15 minutes.
     for ($i = 0; $i < 3; $i++) {
@@ -122,13 +122,13 @@ it('computes escalation durations and caps at the last ban', function () {
         ->and($service->durationForLockoutCount(4))->toBe(168 * 60)
         ->and($service->durationForLockoutCount(9))->toBe(168 * 60);
 
-    config()->set('filament-loginguard.ban_hours', []);
+    config()->set('filament-loginguard.lockout.ban_hours', []);
 
     expect($service->durationForLockoutCount(2))->toBe(15);
 });
 
 it('bypasses whitelisted ips', function () {
-    config()->set('filament-loginguard.whitelisted_ips', ['1.2.3.4']);
+    config()->set('filament-loginguard.lockout.whitelist.ips', ['1.2.3.4']);
 
     for ($i = 0; $i < 50; $i++) {
         ($this->failed)();
@@ -138,7 +138,7 @@ it('bypasses whitelisted ips', function () {
 });
 
 it('bypasses whitelisted emails', function () {
-    config()->set('filament-loginguard.whitelisted_emails', ['A@EXAMPLE.com']);
+    config()->set('filament-loginguard.lockout.whitelist.emails', ['A@EXAMPLE.com']);
 
     for ($i = 0; $i < 50; $i++) {
         ($this->failed)();
@@ -148,7 +148,7 @@ it('bypasses whitelisted emails', function () {
 });
 
 it('locks an ip when aggregate attempts across emails reach the threshold', function () {
-    config()->set('filament-loginguard.max_attempts', 3);
+    config()->set('filament-loginguard.lockout.max_attempts', 3);
 
     ($this->failed)('a@example.com');
     ($this->failed)('b@example.com');
@@ -161,7 +161,7 @@ it('locks an ip when aggregate attempts across emails reach the threshold', func
 });
 
 it('locks an email when aggregate attempts across ips reach the threshold', function () {
-    config()->set('filament-loginguard.max_attempts', 3);
+    config()->set('filament-loginguard.lockout.max_attempts', 3);
 
     foreach (['1.2.3.4', '5.6.7.8', '9.9.9.9'] as $ip) {
         request()->server->set('REMOTE_ADDR', $ip);
@@ -175,9 +175,9 @@ it('locks an email when aggregate attempts across ips reach the threshold', func
 });
 
 it('tracks exact pairs only when both aggregates are off', function () {
-    config()->set('filament-loginguard.max_attempts', 3);
-    config()->set('filament-loginguard.tracking.per_ip', false);
-    config()->set('filament-loginguard.tracking.per_email', false);
+    config()->set('filament-loginguard.lockout.max_attempts', 3);
+    config()->set('filament-loginguard.lockout.tracking.per_ip', false);
+    config()->set('filament-loginguard.lockout.tracking.per_email', false);
 
     ($this->failed)('a@example.com');
     ($this->failed)('b@example.com');
@@ -196,7 +196,7 @@ it('tracks exact pairs only when both aggregates are off', function () {
 });
 
 it('decays attempts outside the window', function () {
-    config()->set('filament-loginguard.max_attempts', 5);
+    config()->set('filament-loginguard.lockout.max_attempts', 5);
 
     ($this->failed)();
     ($this->failed)();
@@ -209,7 +209,7 @@ it('decays attempts outside the window', function () {
 });
 
 it('does not extend an active lock', function () {
-    config()->set('filament-loginguard.max_attempts', 2);
+    config()->set('filament-loginguard.lockout.max_attempts', 2);
 
     ($this->failed)();
     ($this->failed)();
@@ -227,7 +227,7 @@ it('does not extend an active lock', function () {
 });
 
 it('resets counters on successful login', function () {
-    config()->set('filament-loginguard.max_attempts', 2);
+    config()->set('filament-loginguard.lockout.max_attempts', 2);
 
     ($this->failed)();
     ($this->failed)();
@@ -243,7 +243,7 @@ it('resets counters on successful login', function () {
 });
 
 it('only resets the row of the account that logged in', function () {
-    config()->set('filament-loginguard.max_attempts', 5);
+    config()->set('filament-loginguard.lockout.max_attempts', 5);
 
     ($this->failed)('a@example.com');
     ($this->failed)('a@example.com');
@@ -263,7 +263,7 @@ it('only resets the row of the account that logged in', function () {
 });
 
 it('respects the guards config', function () {
-    config()->set('filament-loginguard.tracking.guards', ['web']);
+    config()->set('filament-loginguard.lockout.tracking.guards', ['web']);
 
     ($this->failed)('a@example.com', 'admin');
 
@@ -271,7 +271,7 @@ it('respects the guards config', function () {
 });
 
 it('does nothing when disabled', function () {
-    config()->set('filament-loginguard.enabled', false);
+    config()->set('filament-loginguard.lockout.enabled', false);
 
     for ($i = 0; $i < 20; $i++) {
         ($this->failed)();
@@ -286,7 +286,7 @@ it('does nothing when disabled', function () {
 });
 
 it('throws the lockout message when the threshold is crossed', function () {
-    config()->set('filament-loginguard.max_attempts', 1);
+    config()->set('filament-loginguard.lockout.max_attempts', 1);
 
     try {
         event(new Failed('web', null, ['email' => 'a@example.com', 'password' => 'x']));
