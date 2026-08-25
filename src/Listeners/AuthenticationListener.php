@@ -66,7 +66,7 @@ class AuthenticationListener
         }
 
         // Extension hook: apps can listen for Slack/webhook alerting etc.
-        LoginLockedOut::dispatch(ip: $ip, email: $email, lockedForMinutes: $result->minutes);
+        LoginLockedOut::dispatch($ip, $email, $result->minutes);
 
         $this->service->notifyLockout($ip, $email, $result->minutes);
 
