@@ -11,6 +11,7 @@ use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use SolutionForest\FilamentLoginGuard\Models\UserSession;
 
@@ -32,7 +33,7 @@ class UserSessions extends Page implements HasTable
             return true;
         }
 
-        $user = auth()->user();
+        $user = Auth::user();
 
         return $user !== null && method_exists($user, 'can') && (bool) $user->can($ability);
     }

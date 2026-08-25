@@ -51,7 +51,7 @@ return [
         ],
     ],
 
-    'admin_page' => [
+    'attempts_page' => [
         'enabled' => true,
         'slug' => 'login-guard',
         // Optional class-string of a Filament Cluster (e.g. App\Filament\Clusters\Settings\SettingsCluster)
@@ -84,7 +84,7 @@ return [
             'navigation_icon' => 'heroicon-o-computer-desktop',
             'navigation_group' => null,
             'navigation_sort' => null,
-            // Same authorize semantics as admin_page.authorize.
+            // Same authorize semantics as attempts_page.authorize.
             'authorize' => null,
         ],
     ],
