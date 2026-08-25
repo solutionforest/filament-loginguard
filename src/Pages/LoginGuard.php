@@ -26,15 +26,15 @@ class LoginGuard extends Page implements HasTable
 
     /**
      * Filament v5 pages default to "any authenticated panel user"; gate the page
-     * behind the attempts.page config and an optional ability.
+     * behind the pages.attempts config and an optional ability.
      */
     public static function canAccess(): bool
     {
-        if (! (bool) config('filament-loginguard.attempts.page.enabled', true)) {
+        if (! (bool) config('filament-loginguard.pages.attempts.enabled', true)) {
             return false;
         }
 
-        $ability = config('filament-loginguard.attempts.page.authorize');
+        $ability = config('filament-loginguard.pages.attempts.authorize');
 
         if (blank($ability)) {
             return true;
@@ -47,43 +47,43 @@ class LoginGuard extends Page implements HasTable
 
     public static function shouldRegisterNavigation(): bool
     {
-        return (bool) config('filament-loginguard.attempts.page.enabled', true);
+        return (bool) config('filament-loginguard.pages.attempts.enabled', true);
     }
 
     public static function getDefaultSlug(): string
     {
-        return (string) (config('filament-loginguard.attempts.page.slug') ?: 'login-guard');
+        return (string) (config('filament-loginguard.pages.attempts.slug') ?: 'login-guard');
     }
 
     public static function getCluster(): ?string
     {
-        $cluster = config('filament-loginguard.attempts.page.cluster');
+        $cluster = config('filament-loginguard.pages.attempts.cluster');
 
         return is_string($cluster) && is_subclass_of($cluster, Cluster::class) ? $cluster : null;
     }
 
     public static function getNavigationLabel(): string
     {
-        return (string) (config('filament-loginguard.attempts.page.navigation_label')
+        return (string) (config('filament-loginguard.pages.attempts.navigation_label')
             ?: __('filament-loginguard::loginguard.page.navigation_label'));
     }
 
     public static function getNavigationIcon(): string
     {
-        return (string) (config('filament-loginguard.attempts.page.navigation_icon')
+        return (string) (config('filament-loginguard.pages.attempts.navigation_icon')
             ?: 'heroicon-o-shield-exclamation');
     }
 
     public static function getNavigationGroup(): ?string
     {
-        $group = config('filament-loginguard.attempts.page.navigation_group');
+        $group = config('filament-loginguard.pages.attempts.navigation_group');
 
         return is_string($group) ? $group : null;
     }
 
     public static function getNavigationSort(): ?int
     {
-        $sort = config('filament-loginguard.attempts.page.navigation_sort');
+        $sort = config('filament-loginguard.pages.attempts.navigation_sort');
 
         return is_int($sort) ? $sort : null;
     }
@@ -103,7 +103,7 @@ class LoginGuard extends Page implements HasTable
      */
     protected function getHeaderWidgets(): array
     {
-        if (! (bool) config('filament-loginguard.attempts.page.stats_widget', true)) {
+        if (! (bool) config('filament-loginguard.pages.attempts.stats_widget', true)) {
             return [];
         }
 

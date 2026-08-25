@@ -74,61 +74,103 @@ Lockout semantics:
 
 - Rows are stored per **(IP, email) pair** in the `filament_loginguard_attempts` table.
 - With `tracking.per_ip` enabled, the **sum** of attempts across all emails from one IP triggers a lockout of that IP — rotating emails doesn't help attackers. `tracking.per_email` does the same across IPs for one email.
-- Lock durations **escalate**: the first lockout lasts `lockout_minutes`; the 2nd, 3rd and subsequent lockouts use `ban_hours` (e.g. `[24, 72, 168]` = 1 day, 3 days, 7 days+). The last value repeats for every further lockout.
-- Attempts **decay**: failures older than `attempts_window_minutes` no longer count, and the counter restarts.
+- Lock durations **escalate**: the first lockout lasts `lockout.initial_minutes`; the 2nd, 3rd and subsequent lockouts use `lockout.escalation_hours` (e.g. `[24, 72, 168]` = 1 day, 3 days, 7 days+). The last value repeats for every further lockout.
+- Attempts **decay**: failures older than `lockout.attempts_window_minutes` no longer count, and the counter restarts.
 - A lock is **never extended** by further attempts while it is active; a successful login resets everything (forgiving legitimate owners).
 - The lockout message is rendered in the Filament login form (`data.email` error key) and as a standard `email` validation error in non-Filament forms (redirect back for web requests, 422 for JSON).
 - Localhost (`127.0.0.1`, `::1`) is whitelisted by default.
 
 ## Configuration
 
-This is the contents of the published config file (`config/filament-loginguard.php`):
+This is the contents of the published config file (`config/filament-loginguard.php`), grouped into three sections: `lockout` (brute-force protection behavior), `sessions` (active-session tracking behavior), and `pages` (Filament admin page wiring for both features):
 
 ```php
 return [
-    'enabled' => true,               // master switch
-    'max_attempts' => 10,            // failures allowed inside the window before a lockout
-    'lockout_minutes' => 15,         // duration of the first lockout
-    'ban_hours' => [24, 72, 168],    // 2nd, 3rd, 4th+ lockout durations; last value repeats
-    'attempts_window_minutes' => 30, // decay + aggregate counting window
+    'lockout' => [
+        'enabled' => true,                 // master switch
+        'max_attempts' => 10,              // failures allowed inside the window before a lockout
+        'initial_minutes' => 15,           // duration of the first lockout
+        'escalation_hours' => [24, 72, 168], // 2nd, 3rd, 4th+ lockout durations; last value repeats
+        'attempts_window_minutes' => 30,   // decay + aggregate counting window
 
-    'tracking' => [
-        'per_ip' => true,            // aggregate attempts across emails per IP
-        'per_email' => true,         // aggregate attempts across IPs per email
-        'guards' => [],              // restrict to specific guards, e.g. ['web']; empty = all
-    ],
+        'tracking' => [
+            'per_ip' => true,              // aggregate attempts across emails per IP
+            'per_email' => true,           // aggregate attempts across IPs per email
+            'guards' => [],                // restrict to specific guards, e.g. ['web']; empty = all
+        ],
 
-    'whitelisted_ips' => ['127.0.0.1', '::1'],
-    'whitelisted_emails' => [],
+        'whitelist' => [
+            'ips' => ['127.0.0.1', '::1'],
+            'emails' => [],
+        ],
 
-    'notifications' => [
-        'enabled' => true,
-        'mail' => [
-            'to' => [],              // admin addresses; empty = no notifications
-            'cooldown_minutes' => 60, // at most one notification per IP per window
-            'queue' => false,        // false = sync; queue name string = queued
+        'notifications' => [
+            'enabled' => true,
+            'mail' => [
+                'to' => [],                // admin addresses; empty = no notifications
+                'cooldown_minutes' => 60,  // at most one notification per IP per window
+                'queue' => false,          // false = sync; queue name string = queued
+            ],
         ],
     ],
 
-    'admin_page' => [
-        'enabled' => true,
-        'slug' => 'login-guard',
-        'cluster' => null,           // optional Filament Cluster class-string to nest the page under
-        'navigation_label' => null,  // null falls back to translations
-        'navigation_icon' => 'heroicon-o-shield-exclamation',
-        'navigation_group' => null,
-        'navigation_sort' => null,
-        'authorize' => null,         // ability name checked via $user->can(); null = any authenticated panel user
+    // Active user sessions (requires SESSION_DRIVER=database).
+    'sessions' => [
+        'table' => 'sessions',
+        'online_threshold_seconds' => 60,  // "online now" cutoff
+        'user_model' => null,              // null = auth.providers.users.model
+        'concurrent_limit' => null,        // max concurrent sessions per user; null = unlimited
+
+        'new_device' => [
+            'enabled' => true,
+            'window_hours' => 24,          // sessions first seen within this window are flagged "New"
+
+            'notifications' => [
+                'enabled' => false,        // disabled by default: the plugin cannot know who to notify
+                'mail' => [
+                    'to' => [],
+                    'queue' => false,
+                ],
+            ],
+        ],
+    ],
+
+    'pages' => [
+        'attempts' => [
+            'enabled' => true,
+            'slug' => 'login-guard',
+            'cluster' => null,             // optional Filament Cluster class-string to nest the page under
+            'navigation_label' => null,    // null falls back to translations
+            'navigation_icon' => 'heroicon-o-shield-exclamation',
+            'navigation_group' => null,
+            'navigation_sort' => null,
+            'authorize' => null,           // ability name checked via $user->can(); null = any authenticated panel user
+            'stats_widget' => true,        // show the failed-attempts / lockout stats widget
+        ],
+
+        'sessions' => [
+            'enabled' => true,
+            'slug' => 'user-sessions',
+            'cluster' => null,
+            'navigation_label' => null,
+            'navigation_icon' => 'heroicon-o-computer-desktop',
+            'navigation_group' => null,
+            'navigation_sort' => null,
+            'authorize' => null,
+        ],
     ],
 ];
 ```
 
 > [!WARNING]
-> The admin page is visible to **any authenticated panel user** by default. Restrict it with the `authorize` option and a Gate, e.g.:
+> Both admin pages are visible to **any authenticated panel user** by default. Restrict them with the `authorize` option and a Gate, e.g.:
 >
 > ```php
 > // config/filament-loginguard.php
-> 'admin_page' => ['authorize' => 'view-filament-loginguard', /* ... */],
+> 'pages' => [
+>     'attempts' => ['authorize' => 'view-filament-loginguard', /* ... */],
+>     'sessions' => ['authorize' => 'view-filament-loginguard', /* ... */],
+> ],
 >
 > // app/Providers/AppServiceProvider.php
 > Gate::define('view-filament-loginguard', fn (User $user) => $user->can('access-admin-settings'));

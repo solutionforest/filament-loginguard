@@ -80,7 +80,7 @@ class AuthenticationListener
     public function handleLogin(Login $event): void
     {
         $guardTracked = $this->service->isEnabled() && $this->shouldTrackGuard($event->guard);
-        $sessionsEnabled = (bool) config('filament-loginguard.sessions.page.enabled', true);
+        $sessionsEnabled = (bool) config('filament-loginguard.pages.sessions.enabled', true);
 
         if (! $guardTracked && ! $sessionsEnabled) {
             return;

@@ -124,7 +124,7 @@ it('computes escalation durations and caps at the last ban', function () {
         ->and($service->durationForLockoutCount(4))->toBe(168 * 60)
         ->and($service->durationForLockoutCount(9))->toBe(168 * 60);
 
-    config()->set('filament-loginguard.lockout.ban_hours', []);
+    config()->set('filament-loginguard.lockout.escalation_hours', []);
 
     expect($service->durationForLockoutCount(2))->toBe(15);
 });

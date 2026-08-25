@@ -2,6 +2,18 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
+## Unreleased
+
+### Changed
+
+- **Breaking:** restructured `config/filament-loginguard.php` for consistency:
+  - `lockout.lockout_minutes` → `lockout.initial_minutes`
+  - `lockout.ban_hours` → `lockout.escalation_hours`
+  - `attempts.page.*` → `pages.attempts.*`
+  - `sessions.page.*` → `pages.sessions.*`
+  - `sessions.new_device.notification.*` → `sessions.new_device.notifications.*`, with `to`/`queue` now nested under `.mail` to match `lockout.notifications.mail.*`
+  - Republish the config file (`php artisan vendor:publish --tag="filament-loginguard-config" --force`) and update any customized values to the new key paths.
+
 ## v0.1.0 - 2026-08-25
 
 ### Added

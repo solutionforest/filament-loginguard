@@ -29,8 +29,8 @@ it('records a device fingerprint on login', function () {
 });
 
 it('notifies only the first time a device is seen', function () {
-    config()->set('filament-loginguard.sessions.new_device.notification.enabled', true);
-    config()->set('filament-loginguard.sessions.new_device.notification.to', ['security@example.com']);
+    config()->set('filament-loginguard.sessions.new_device.notifications.enabled', true);
+    config()->set('filament-loginguard.sessions.new_device.notifications.mail.to', ['security@example.com']);
 
     Notification::fake();
 

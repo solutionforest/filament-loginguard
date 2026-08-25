@@ -28,7 +28,7 @@ class UserSessions extends Page implements HasTable
             return false;
         }
 
-        $ability = config('filament-loginguard.sessions.page.authorize');
+        $ability = config('filament-loginguard.pages.sessions.authorize');
 
         if (blank($ability)) {
             return true;
@@ -46,38 +46,38 @@ class UserSessions extends Page implements HasTable
 
     public static function getDefaultSlug(): string
     {
-        return (string) (config('filament-loginguard.sessions.page.slug') ?: 'user-sessions');
+        return (string) (config('filament-loginguard.pages.sessions.slug') ?: 'user-sessions');
     }
 
     public static function getCluster(): ?string
     {
-        $cluster = config('filament-loginguard.sessions.page.cluster');
+        $cluster = config('filament-loginguard.pages.sessions.cluster');
 
         return is_string($cluster) && is_subclass_of($cluster, Cluster::class) ? $cluster : null;
     }
 
     public static function getNavigationLabel(): string
     {
-        return (string) (config('filament-loginguard.sessions.page.navigation_label')
+        return (string) (config('filament-loginguard.pages.sessions.navigation_label')
             ?: __('filament-loginguard::loginguard.sessions.navigation_label'));
     }
 
     public static function getNavigationIcon(): string
     {
-        return (string) (config('filament-loginguard.sessions.page.navigation_icon')
+        return (string) (config('filament-loginguard.pages.sessions.navigation_icon')
             ?: 'heroicon-o-computer-desktop');
     }
 
     public static function getNavigationGroup(): ?string
     {
-        $group = config('filament-loginguard.sessions.page.navigation_group');
+        $group = config('filament-loginguard.pages.sessions.navigation_group');
 
         return is_string($group) ? $group : null;
     }
 
     public static function getNavigationSort(): ?int
     {
-        $sort = config('filament-loginguard.sessions.page.navigation_sort');
+        $sort = config('filament-loginguard.pages.sessions.navigation_sort');
 
         return is_int($sort) ? $sort : null;
     }
@@ -153,7 +153,7 @@ class UserSessions extends Page implements HasTable
 
     protected static function isEnabled(): bool
     {
-        return (bool) config('filament-loginguard.sessions.page.enabled', true)
+        return (bool) config('filament-loginguard.pages.sessions.enabled', true)
             && Schema::hasTable((string) config('filament-loginguard.sessions.table', 'sessions'));
     }
 }

@@ -160,25 +160,25 @@ final class LoginGuardService
     }
 
     /**
-     * First lockout = lockout_minutes; 2nd = ban_hours[0]; 3rd = ban_hours[1]; ... last entry repeats.
+     * First lockout = initial_minutes; 2nd = escalation_hours[0]; 3rd = escalation_hours[1]; ... last entry repeats.
      */
     public function durationForLockoutCount(int $lockoutCount): int
     {
-        $baseMinutes = (int) config('filament-loginguard.lockout.lockout_minutes', 15);
+        $baseMinutes = (int) config('filament-loginguard.lockout.initial_minutes', 15);
 
         if ($lockoutCount <= 1) {
             return $baseMinutes;
         }
 
-        $banHours = (array) config('filament-loginguard.lockout.ban_hours', []);
+        $escalationHours = (array) config('filament-loginguard.lockout.escalation_hours', []);
 
-        if ($banHours === []) {
+        if ($escalationHours === []) {
             return $baseMinutes;
         }
 
-        $index = min($lockoutCount - 2, count($banHours) - 1);
+        $index = min($lockoutCount - 2, count($escalationHours) - 1);
 
-        return (int) $banHours[$index] * 60;
+        return (int) $escalationHours[$index] * 60;
     }
 
     /**
@@ -289,11 +289,11 @@ final class LoginGuardService
      */
     private function notifyNewDevice(string $fingerprint, string $email): void
     {
-        if (! (bool) config('filament-loginguard.sessions.new_device.notification.enabled', false)) {
+        if (! (bool) config('filament-loginguard.sessions.new_device.notifications.enabled', false)) {
             return;
         }
 
-        $recipients = (array) config('filament-loginguard.sessions.new_device.notification.to', []);
+        $recipients = (array) config('filament-loginguard.sessions.new_device.notifications.mail.to', []);
 
         if ($recipients === []) {
             return;
@@ -305,7 +305,7 @@ final class LoginGuardService
             ip: (string) request()->ip(),
         );
 
-        $queue = config('filament-loginguard.sessions.new_device.notification.queue', false);
+        $queue = config('filament-loginguard.sessions.new_device.notifications.mail.queue', false);
 
         foreach ($recipients as $recipient) {
             $notifiable = Notification::route('mail', $recipient);

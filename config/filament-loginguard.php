@@ -17,12 +17,12 @@ return [
         'max_attempts' => 10,
 
         // Duration of the FIRST lockout, in minutes.
-        'lockout_minutes' => 15,
+        'initial_minutes' => 15,
 
         // Escalating lockout durations for the 2nd, 3rd, ... lockout, in HOURS.
         // With [24, 72, 168]: 2nd lockout = 1 day, 3rd = 3 days, 4th+ = 7 days.
-        // The last value is reused for every subsequent lockout. Empty array = always `lockout_minutes`.
-        'ban_hours' => [24, 72, 168],
+        // The last value is reused for every subsequent lockout. Empty array = always `initial_minutes`.
+        'escalation_hours' => [24, 72, 168],
 
         // (a) attempts older than this window are not counted (attempt counter decays back to 0),
         // (b) this is also the window used for the aggregate per-IP / per-email sums.
@@ -61,32 +61,6 @@ return [
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Admin pages
-    |--------------------------------------------------------------------------
-    */
-    'attempts' => [
-        'page' => [
-            'enabled' => true,
-            'slug' => 'login-guard',
-            // Optional class-string of a Filament Cluster (e.g. App\Filament\Clusters\Settings\SettingsCluster)
-            // to nest the page under. null = top-level navigation item.
-            'cluster' => null,
-            // Labels fall back to translations when null.
-            'navigation_label' => null,
-            'navigation_icon' => 'heroicon-o-shield-exclamation',
-            'navigation_group' => null,
-            'navigation_sort' => null,
-            // Optional ability name (string) that the logged-in user must pass via `$user->can(...)`
-            // to view the page. null = any authenticated panel user. Fail-closed when the ability
-            // is not registered anywhere.
-            'authorize' => null,
-            // Show the failed-attempts / lockout stats widget at the top of the page.
-            'stats_widget' => true,
-        ],
-    ],
-
     // Active user sessions (requires SESSION_DRIVER=database). Lists sessions,
     // shows "last active" (Laravel updates `last_activity` on every request,
     // including Livewire clicks) and offers a one-click Revoke. Closing the
@@ -108,14 +82,44 @@ return [
         'new_device' => [
             'enabled' => true,
             'window_hours' => 24,
-            'notification' => [
+            'notifications' => [
                 // Disabled by default: the plugin cannot know who to notify.
                 'enabled' => false,
-                'to' => [],
-                'queue' => false,
+                'mail' => [
+                    'to' => [],
+                    // Queue name to send on, or false to send synchronously.
+                    'queue' => false,
+                ],
             ],
         ],
-        'page' => [
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin pages
+    |--------------------------------------------------------------------------
+    */
+    'pages' => [
+        'attempts' => [
+            'enabled' => true,
+            'slug' => 'login-guard',
+            // Optional class-string of a Filament Cluster (e.g. App\Filament\Clusters\Settings\SettingsCluster)
+            // to nest the page under. null = top-level navigation item.
+            'cluster' => null,
+            // Labels fall back to translations when null.
+            'navigation_label' => null,
+            'navigation_icon' => 'heroicon-o-shield-exclamation',
+            'navigation_group' => null,
+            'navigation_sort' => null,
+            // Optional ability name (string) that the logged-in user must pass via `$user->can(...)`
+            // to view the page. null = any authenticated panel user. Fail-closed when the ability
+            // is not registered anywhere.
+            'authorize' => null,
+            // Show the failed-attempts / lockout stats widget at the top of the page.
+            'stats_widget' => true,
+        ],
+
+        'sessions' => [
             'enabled' => true,
             'slug' => 'user-sessions',
             'cluster' => null,
@@ -123,7 +127,7 @@ return [
             'navigation_icon' => 'heroicon-o-computer-desktop',
             'navigation_group' => null,
             'navigation_sort' => null,
-            // Same authorize semantics as attempts.page.authorize.
+            // Same authorize semantics as pages.attempts.authorize.
             'authorize' => null,
         ],
     ],

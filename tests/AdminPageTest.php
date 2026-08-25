@@ -111,14 +111,14 @@ it('offers no delete action for records', function () {
 });
 
 it('denies access when the admin page is disabled', function () {
-    config()->set('filament-loginguard.attempts.page.enabled', false);
+    config()->set('filament-loginguard.pages.attempts.enabled', false);
 
     Livewire::test(LoginGuard::class)
         ->assertStatus(403);
 });
 
 it('gates the page behind an ability when configured', function () {
-    config()->set('filament-loginguard.attempts.page.authorize', 'view-filament-loginguard');
+    config()->set('filament-loginguard.pages.attempts.authorize', 'view-filament-loginguard');
 
     Gate::define('view-filament-loginguard', fn (): bool => false);
 
@@ -131,13 +131,13 @@ it('gates the page behind an ability when configured', function () {
 });
 
 it('hides navigation when disabled', function () {
-    config()->set('filament-loginguard.attempts.page.enabled', false);
+    config()->set('filament-loginguard.pages.attempts.enabled', false);
 
     expect(LoginGuard::shouldRegisterNavigation())->toBeFalse();
 });
 
 it('hides the stats widget when disabled', function () {
-    config()->set('filament-loginguard.attempts.page.stats_widget', false);
+    config()->set('filament-loginguard.pages.attempts.stats_widget', false);
 
     LoginAttempt::factory()->create();
 
@@ -149,11 +149,11 @@ it('hides the stats widget when disabled', function () {
 it('nests under a cluster when configured', function () {
     expect(LoginGuard::getCluster())->toBeNull();
 
-    config()->set('filament-loginguard.attempts.page.cluster', TestCluster::class);
+    config()->set('filament-loginguard.pages.attempts.cluster', TestCluster::class);
 
     expect(LoginGuard::getCluster())->toBe(TestCluster::class);
 
-    config()->set('filament-loginguard.attempts.page.cluster', 'Not\\A\\Cluster');
+    config()->set('filament-loginguard.pages.attempts.cluster', 'Not\\A\\Cluster');
 
     expect(LoginGuard::getCluster())->toBeNull();
 });
