@@ -10,6 +10,8 @@ Brute force login protection and session management for Filament panels and Lara
 > [!NOTE]
 > Filament already throttles its login page at 5 attempts per minute per IP. This package adds the missing **lockout layer** on top of that: persistent tracking, escalating bans, per-email protection and an admin UI.
 
+![Login Attempts page](.github/art/attempts-page.png)
+
 ## Requirements
 
 - PHP 8.3+
@@ -84,6 +86,8 @@ Lockout semantics:
 ## Session management
 
 Requires `SESSION_DRIVER=database`. The **User Sessions** admin page lists every active session with a human-readable "last active" state (Laravel updates `last_activity` on every request, including Livewire clicks) and a one-click Revoke.
+
+![User Sessions page](.github/art/sessions-page.png)
 
 - **New-device detection**: each login's browser+platform is fingerprinted (`sessions.new_device`); a session is flagged "New" on the page when its fingerprint was first seen within `window_hours`, and an optional email notifies the configured recipients the first time a device is seen.
 - **Concurrent session limits**: set `sessions.concurrent_limit` to cap sessions per user — the oldest sessions are evicted to make room when a new login would exceed the limit.
