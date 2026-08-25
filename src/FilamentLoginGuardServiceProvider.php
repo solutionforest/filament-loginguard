@@ -35,6 +35,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
         $package->name(static::$name)
             ->hasConfigFile('filament-loginguard')
             ->hasMigrations($this->getMigrations())
+            ->runsMigrations()
             ->hasTranslations()
             ->hasViews(static::$viewNamespace)
             ->hasCommands($this->getCommands())
