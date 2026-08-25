@@ -53,7 +53,19 @@ it('shows the remaining lock time as a relative string', function () {
 
     Livewire::test(LoginGuard::class)
         ->assertSuccessful()
-        ->assertSee('15 minutes');
+        ->assertSee('15 minutes from now');
+});
+
+it('shows the last attempt time as a relative string', function () {
+    LoginAttempt::factory()->create([
+        'ip' => '1.2.3.4',
+        'email' => 'a@example.com',
+        'last_attempt_at' => now()->subMinutes(15),
+    ]);
+
+    Livewire::test(LoginGuard::class)
+        ->assertSuccessful()
+        ->assertSee('15 minutes ago');
 });
 
 it('parses user agents into device names', function () {
