@@ -177,7 +177,12 @@ final class LoginGuardService
     }
 
     /**
-     * Successful login: clear counters and any lock for that IP and that email.
+     * Successful login: clear counters and any lock for this specific (ip, email) row.
+     *
+     * The row is keyed on the (ip, email) pair, so a successful login must only reset
+     * that one pair. Matching by IP alone (or by IP *or* email) would wipe the failed
+     * attempts of every other account sharing the IP — e.g. every account behind a NAT,
+     * or every local account on 127.0.0.1.
      */
     public function resetForSuccess(string $ip, ?string $email): void
     {
@@ -185,20 +190,18 @@ final class LoginGuardService
             return;
         }
 
-        LoginAttempt::query()
-            ->where(function (Builder $query) use ($ip, $email): void {
-                $query->where('ip', $ip);
+        $query = LoginAttempt::query()->where('ip', $ip);
 
-                if (filled($email)) {
-                    $query->orWhere('email', $email);
-                }
-            })
-            ->update([
-                'attempts' => 0,
-                'lockout_count' => 0,
-                'locked_until' => null,
-                'last_attempt_at' => null,
-            ]);
+        if (filled($email)) {
+            $query->where('email', $email);
+        }
+
+        $query->update([
+            'attempts' => 0,
+            'lockout_count' => 0,
+            'locked_until' => null,
+            'last_attempt_at' => null,
+        ]);
     }
 
     /**

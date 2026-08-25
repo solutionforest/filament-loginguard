@@ -242,6 +242,26 @@ it('resets counters on successful login', function () {
         ->and($row->last_attempt_at)->toBeNull();
 });
 
+it('only resets the row of the account that logged in', function () {
+    config()->set('filament-loginguard.max_attempts', 5);
+
+    ($this->failed)('a@example.com');
+    ($this->failed)('a@example.com');
+    ($this->failed)('b@example.com');
+    ($this->failed)('b@example.com');
+    ($this->failed)('b@example.com');
+
+    event(new Login('web', new TestUser(email: 'a@example.com'), false));
+
+    $a = LoginAttempt::query()->where('email', 'a@example.com')->sole();
+    $b = LoginAttempt::query()->where('email', 'b@example.com')->sole();
+
+    expect($a->attempts)->toBe(0)
+        ->and($a->last_attempt_at)->toBeNull()
+        ->and($b->attempts)->toBe(3)
+        ->and($b->last_attempt_at)->not->toBeNull();
+});
+
 it('respects the guards config', function () {
     config()->set('filament-loginguard.tracking.guards', ['web']);
 
