@@ -120,6 +120,7 @@ class UserSessions extends Page implements HasTable
                         ? __('filament-loginguard::loginguard.sessions.table.new')
                         : null)
                     ->badge()
+                    ->placeholder('-')
                     ->color('warning'),
             ])
             ->recordActions([

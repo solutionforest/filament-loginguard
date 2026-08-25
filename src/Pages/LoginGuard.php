@@ -149,7 +149,9 @@ class LoginGuard extends Page implements HasTable
                     ->tooltip(fn (LoginAttempt $record): ?string => $record->last_attempt_at?->toDateTimeString()),
                 TextColumn::make('success_count')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.success_count'))
+                    ->state(fn (LoginAttempt $record): ?int => $record->success_count > 0 ? $record->success_count : null)
                     ->badge()
+                    ->placeholder('-')
                     ->color('success'),
                 TextColumn::make('last_success_at')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.last_success_at'))
