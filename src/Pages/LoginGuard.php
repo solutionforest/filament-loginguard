@@ -103,6 +103,10 @@ class LoginGuard extends Page implements HasTable
      */
     protected function getHeaderWidgets(): array
     {
+        if (! (bool) config('filament-loginguard.attempts.page.stats_widget', true)) {
+            return [];
+        }
+
         return [
             LoginGuardStats::class,
         ];

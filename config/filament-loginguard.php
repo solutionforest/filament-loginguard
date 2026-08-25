@@ -82,6 +82,8 @@ return [
             // to view the page. null = any authenticated panel user. Fail-closed when the ability
             // is not registered anywhere.
             'authorize' => null,
+            // Show the failed-attempts / lockout stats widget at the top of the page.
+            'stats_widget' => true,
         ],
     ],
 

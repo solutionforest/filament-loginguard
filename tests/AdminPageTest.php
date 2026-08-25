@@ -136,6 +136,16 @@ it('hides navigation when disabled', function () {
     expect(LoginGuard::shouldRegisterNavigation())->toBeFalse();
 });
 
+it('hides the stats widget when disabled', function () {
+    config()->set('filament-loginguard.attempts.page.stats_widget', false);
+
+    LoginAttempt::factory()->create();
+
+    Livewire::test(LoginGuard::class)
+        ->assertSuccessful()
+        ->assertDontSee('Failed attempts (24h)');
+});
+
 it('nests under a cluster when configured', function () {
     expect(LoginGuard::getCluster())->toBeNull();
 
