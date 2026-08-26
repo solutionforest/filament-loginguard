@@ -1,17 +1,74 @@
-# Filament LoginGuard
+<a href="https://github.com/solutionforest/filament-loginguard" class="filament-hidden">
+<img style="width: 100%; max-width: 100%;" alt="filament-loginguard-art" src=".github/art/cover.jpeg">
+</a>
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/solution-forest/filament-loginguard.svg?style=flat-square)](https://packagist.org/packages/solution-forest/filament-loginguard)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/solutionforest/filament-loginguard/tests.yml?branch=5.x&label=tests&style=flat-square)](https://github.com/solutionforest/filament-loginguard/actions?query=workflow%3Atests+branch%3A5.x)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/solutionforest/filament-loginguard/fix-code-style.yml?branch=5.x&label=code%20style&style=flat-square)](https://github.com/solutionforest/filament-loginguard/actions?query=workflow%3A"fix-code-style"+branch%3A5.x)
-[![Total Downloads](https://img.shields.io/packagist/dt/solution-forest/filament-loginguard.svg?style=flat-square)](https://packagist.org/packages/solution-forest/filament-loginguard)
+<p align="center" class="flex items-center justify-center">
+    <a href="https://filamentphp.com/docs/5.x/panels/installation">
+        <img alt="FILAMENT 5.x" src="https://img.shields.io/badge/FILAMENT-5.x-EBB304?style=for-the-badge">
+    </a>
+    <a href="https://laravel.com/docs">
+        <img alt="LARAVEL 11 | 12 | 13" src="https://img.shields.io/badge/LARAVEL-11%20%7C%2012%20%7C%2013-FF2D20?style=for-the-badge&logo=laravel">
+    </a>
+    <a href="https://packagist.org/packages/solution-forest/filament-loginguard">
+        <img alt="Packagist" src="https://img.shields.io/packagist/v/solution-forest/filament-loginguard.svg?style=for-the-badge&logo=packagist">
+    </a>
+    <a href="https://github.com/solutionforest/filament-loginguard/actions?query=workflow%3Atests+branch%3A5.x" class="filament-hidden">
+        <img alt="Tests Passing" src="https://img.shields.io/github/actions/workflow/status/solutionforest/filament-loginguard/tests.yml?style=for-the-badge&logo=github&label=tests">
+    </a>
+    <a href="https://github.com/solutionforest/filament-loginguard/actions?query=workflow%3Afix-code-style+branch%3A5.x" class="filament-hidden">
+        <img alt="Code Style Passing" src="https://img.shields.io/github/actions/workflow/status/solutionforest/filament-loginguard/fix-code-style.yml?style=for-the-badge&logo=github&label=code%20style">
+    </a>
+    <a href="https://packagist.org/packages/solution-forest/filament-loginguard">
+        <img alt="Downloads" src="https://img.shields.io/packagist/dt/solution-forest/filament-loginguard.svg?style=for-the-badge">
+    </a>
+</p>
 
-Filament LoginGuard is an enterprise-grade security package for Filament and Laravel applications. It provides persistent brute-force protection, escalating IP and email lockouts, active-session management, new-device detection, concurrent-session limits, administrator notifications, and a comprehensive Filament management interface.
+<h1 style="font-size:2em; font-weight:bold; display:block; margin:0.67em 0;">Filament LoginGuard</h1>
 
-## Table of Contents
+Enterprise-grade login security for Filament and Laravel — persistent brute-force protection, escalating IP and email lockouts, and active-session management.
+
+> [!NOTE]
+> Filament already throttles its login page at 5 attempts per minute per IP. This package adds the missing **lockout layer** on top of that: persistent tracking, escalating bans, per-email protection and an admin UI.
+
+## Features
+
+- 🔒 **Brute-Force Protection**
+  - 📦 Persistent per-IP/email attempt tracking
+  - 📈 Escalating IP & email lockouts
+  - 🕸️ Cross-email (per-IP) and cross-IP (per-email) aggregation
+  - 🧠 Attempt decay window
+  - 🎯 IP & email whitelists
+  - 🔔 Administrator lockout notifications (cooldown + queue support)
+- 👥 **Session Management**
+  - 🖥️ Active-session listing with "last active" state
+  - 🆕 New-device detection with optional email alert
+  - 🔒 Concurrent-session limits with oldest-first eviction
+  - 🔄 One-click session revoke
+- 🧰 **Filament Management Interface**
+  - 📋 Login Attempts page — inspect & unblock recorded attempts
+  - 📊 Failed-attempts / lockout stats widget
+  - 🛡️ Gate-based per-page authorization
+
+<div class="filament-hidden">
+
+## Compatibility
+
+| Requirement | Version |
+|-------------|---------|
+| PHP         | 8.3+    |
+| Laravel     | 11, 12 or 13 |
+| Filament    | 5.x (≥ 5.6.5, Livewire 4) |
+
+> Earlier 5.x releases have known security advisories; require at least Filament 5.6.5.
+
+<b>Table of Contents</b>
 
 - [Features](#features)
-- [Requirements](#requirements)
+- [Compatibility](#compatibility)
 - [Installation](#installation)
+  - [1. Install the Package](#1-install-the-package)
+  - [2. Publish and Migrate](#2-publish-and-migrate)
+  - [3. Register the Admin Pages](#3-register-the-admin-pages)
 - [How it works](#how-it-works)
 - [Session management](#session-management)
 - [Configuration](#configuration)
@@ -23,35 +80,19 @@ Filament LoginGuard is an enterprise-grade security package for Filament and Lar
 - [Credits](#credits)
 - [License](#license)
 
-## Features
-
-- **Persistent brute-force protection** — failed login attempts are recorded per IP/email pair, along with the browser that made them, and persist across requests and restarts.
-- **Escalating IP & email lockouts** — a configurable threshold triggers an escalating lockout duration; aggregation across emails (per IP) and across IPs (per email) stops credential-stuffing and distributed attacks.
-- **IP & email whitelists** — trusted addresses bypass protection entirely.
-- **Administrator notifications** — admins are emailed on lockouts, with per-IP cooldowns and optional queue support.
-- **Active-session management** — a panel page lists every active session with a human-readable "last active" state and a one-click Revoke.
-- **New-device detection** — browser/platform fingerprints flag first-seen devices, with optional email notification.
-- **Concurrent-session limits** — cap sessions per user, evicting the oldest to make room.
-- **Comprehensive Filament interface** — dedicated admin pages to inspect and unblock recorded attempts, plus a failed-attempts/lockout stats widget.
-
-> [!NOTE]
-> Filament already throttles its login page at 5 attempts per minute per IP. This package adds the missing **lockout layer** on top of that: persistent tracking, escalating bans, per-email protection and an admin UI.
-
-![Login Attempts page](.github/art/attempts-page.png)
-
-## Requirements
-
-- PHP 8.3+
-- Laravel 11, 12 or 13
-- Filament v5 (≥ 5.6.5 — earlier 5.x releases have known security advisories; Livewire 4)
+</div>
 
 ## Installation
+
+### 1. Install the Package
 
 You can install the package via composer:
 
 ```bash
 composer require solution-forest/filament-loginguard
 ```
+
+### 2. Publish and Migrate
 
 Publish and run the migrations, and publish the config file:
 
@@ -73,6 +114,8 @@ Optionally, you can publish the views and translations using:
 php artisan vendor:publish --tag="filament-loginguard-views"
 php artisan vendor:publish --tag="filament-loginguard-translations"
 ```
+
+### 3. Register the Admin Pages
 
 To enable the **admin pages** (Login Attempts: view / unblock recorded attempts; User Sessions: list / revoke active sessions), register the plugin in your panel provider, e.g. `app/Providers/Filament/AdminPanelProvider.php`:
 
@@ -109,6 +152,8 @@ Lockout semantics:
 - The lockout message is rendered in the Filament login form (`data.email` error key) and as a standard `email` validation error in non-Filament forms (redirect back for web requests, 422 for JSON).
 - Localhost (`127.0.0.1`, `::1`) is whitelisted by default.
 - A `LoginLockedOut` event is dispatched on every lockout — listen for it to wire up custom alerting (Slack, webhooks, etc.) alongside or instead of the built-in email notification.
+
+![Login Attempts page](.github/art/attempts-page.png)
 
 ## Session management
 
