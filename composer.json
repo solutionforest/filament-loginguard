@@ -30,6 +30,8 @@
     },
     "require-dev": {
         "larastan/larastan": "^3.0",
+        "laravel/breeze": "^2.4",
+        "laravel/fortify": "^1.39",
         "laravel/pint": "^1.0",
         "nunomaduro/collision": "^8.0",
         "orchestra/testbench": "^9.0|^10.0|^11.0",
@@ -73,6 +75,12 @@
         ],
         "serve": [
             "Composer\\Config::disableProcessTimeout",
+            "@build",
+            "@php vendor/bin/testbench serve --ansi"
+        ],
+        "dev": [
+            "Composer\\Config::disableProcessTimeout",
+            "npm run build:workbench",
             "@build",
             "@php vendor/bin/testbench serve --ansi"
         ]

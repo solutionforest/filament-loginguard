@@ -3,10 +3,14 @@
     "type": "module",
     "scripts": {
         "dev": "node bin/build.js --dev",
-        "build": "node bin/build.js"
+        "build": "node bin/build.js",
+        "build:workbench": "tailwindcss --input ./workbench/resources/css/app.css --output ./vendor/orchestra/testbench-core/laravel/public/css/app.css --minify && esbuild ./workbench/resources/js/app.js --bundle --outfile=./vendor/orchestra/testbench-core/laravel/public/js/app.js --minify"
     },
     "devDependencies": {
+        "@tailwindcss/cli": "^4.3.3",
+        "alpinejs": "^3.16.2",
         "esbuild": "^0.28.0",
-        "prettier": "^3.5.3"
+        "prettier": "^3.5.3",
+        "tailwindcss": "^4.3.3"
     }
 }

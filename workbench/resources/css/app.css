@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@source "../views";
+
+@theme {
+    --font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+}

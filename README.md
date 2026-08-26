@@ -133,7 +133,13 @@ The core protection works **without** registering the plugin — only the admin 
 
 ## How it works
 
-The package listens to three Laravel auth events, so it protects **every** login flow in your app (Filament panels, Fortify, custom controllers):
+The package hooks into Laravel's core auth events rather than any specific UI, so it protects **every** login flow that goes through `Auth::attempt()`:
+
+- **Native Laravel auth** — the Laravel Starter Kits, Breeze, and Fortify all authenticate through `Auth::attempt()`, so their login forms are protected out of the box.
+- **Filament** — the built-in login page (and the Filament Starter Kit, which extends it) calls `attemptWhen()`, which fires the same events.
+- **Custom controllers** — anything that calls `Auth::attempt()` directly works too.
+
+> Social login (OAuth/Socialite) has no password to brute-force, so it doesn't fire `Attempting`/`Failed`; it still fires `Login`, so success tracking and session management apply.
 
 | Event | Action |
 | --- | --- |
@@ -259,7 +265,9 @@ return [
 ```
 
 > [!WARNING]
-> Both admin pages are visible to **any authenticated panel user** by default. Restrict them with the `authorize` option and a Gate, e.g.:
+> Both admin pages are visible to **any authenticated panel user** by default. Restrict them with the `authorize` option, which accepts a permission/ability name checked via `$user->can(...)`.
+>
+> **With `spatie/laravel-permission`** (e.g. when using Filament Shield), the string is a permission name — just create the permission and assign it to a role; no Gate is required:
 >
 > ```php
 > // config/filament-loginguard.php
@@ -267,7 +275,11 @@ return [
 >     'attempts' => ['authorize' => 'view-filament-loginguard', /* ... */],
 >     'sessions' => ['authorize' => 'view-filament-loginguard', /* ... */],
 > ],
+> ```
 >
+> **Without spatie**, define a Gate for the ability in a service provider:
+>
+> ```php
 > // app/Providers/AppServiceProvider.php
 > Gate::define('view-filament-loginguard', fn (User $user) => $user->can('access-admin-settings'));
 > ```
