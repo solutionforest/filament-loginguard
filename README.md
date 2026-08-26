@@ -5,7 +5,34 @@
 [![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/solutionforest/filament-loginguard/fix-code-style.yml?branch=5.x&label=code%20style&style=flat-square)](https://github.com/solutionforest/filament-loginguard/actions?query=workflow%3A"fix-code-style"+branch%3A5.x)
 [![Total Downloads](https://img.shields.io/packagist/dt/solution-forest/filament-loginguard.svg?style=flat-square)](https://packagist.org/packages/solution-forest/filament-loginguard)
 
-Brute force login protection and session management for Filament panels and Laravel apps. Failed login attempts are recorded per IP/email pair in a database table, along with the browser that made them; once a threshold is reached the IP and/or email is locked out for a configurable, escalating duration. Whitelists bypass protection entirely, admins are notified by email on lockouts, and a panel page lets you inspect and unblock recorded attempts. A second panel page lists active sessions (requires `SESSION_DRIVER=database`), flags logins from new devices, enforces a per-user concurrent session limit, and offers a one-click Revoke.
+Filament LoginGuard is an enterprise-grade security package for Filament and Laravel applications. It provides persistent brute-force protection, escalating IP and email lockouts, active-session management, new-device detection, concurrent-session limits, administrator notifications, and a comprehensive Filament management interface.
+
+## Table of Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [How it works](#how-it-works)
+- [Session management](#session-management)
+- [Configuration](#configuration)
+- [Maintenance](#maintenance)
+- [Testing](#testing)
+- [Changelog](#changelog)
+- [Contributing](#contributing)
+- [Security Vulnerabilities](#security-vulnerabilities)
+- [Credits](#credits)
+- [License](#license)
+
+## Features
+
+- **Persistent brute-force protection** — failed login attempts are recorded per IP/email pair, along with the browser that made them, and persist across requests and restarts.
+- **Escalating IP & email lockouts** — a configurable threshold triggers an escalating lockout duration; aggregation across emails (per IP) and across IPs (per email) stops credential-stuffing and distributed attacks.
+- **IP & email whitelists** — trusted addresses bypass protection entirely.
+- **Administrator notifications** — admins are emailed on lockouts, with per-IP cooldowns and optional queue support.
+- **Active-session management** — a panel page lists every active session with a human-readable "last active" state and a one-click Revoke.
+- **New-device detection** — browser/platform fingerprints flag first-seen devices, with optional email notification.
+- **Concurrent-session limits** — cap sessions per user, evicting the oldest to make room.
+- **Comprehensive Filament interface** — dedicated admin pages to inspect and unblock recorded attempts, plus a failed-attempts/lockout stats widget.
 
 > [!NOTE]
 > Filament already throttles its login page at 5 attempts per minute per IP. This package adds the missing **lockout layer** on top of that: persistent tracking, escalating bans, per-email protection and an admin UI.
