@@ -2,21 +2,9 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
-## v0.3.0 - 2026-08-26
-
-### Added
-
-- Opt-in auto-scheduling via `maintenance.cleanup_attempts` / `maintenance.cleanup_sessions`. When `enabled`, the package registers the corresponding cleanup command with Laravel's scheduler using the configured `expression` cron value (`cleanup-sessions` only when `SESSION_DRIVER=database`).
-
-### Changed
-
-- **Breaking:** renamed `filament-loginguard:cleanup` to `filament-loginguard:cleanup-attempts` for clarity (the command only clears attempt records). Update any scheduled tasks or scripts that reference the old name.
-
-### Fixed
-
-- Removed `publishMigrations()` / `askToRunMigrations()` from the install command. Migrations auto-run, so the publish workflow produced duplicate migrations (e.g. a `create_filament_loginguard_attempts_table` conflict) for apps that had already published them.
-
 ## Unreleased
+
+## v0.3.0 - 2026-08-26
 
 ### Added
 
