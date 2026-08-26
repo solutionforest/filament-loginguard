@@ -2,6 +2,20 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
+## v0.3.0 - 2026-08-26
+
+### Added
+
+- Opt-in auto-scheduling via `maintenance.cleanup_attempts` / `maintenance.cleanup_sessions`. When `enabled`, the package registers the corresponding cleanup command with Laravel's scheduler using the configured `expression` cron value (`cleanup-sessions` only when `SESSION_DRIVER=database`).
+
+### Changed
+
+- **Breaking:** renamed `filament-loginguard:cleanup` to `filament-loginguard:cleanup-attempts` for clarity (the command only clears attempt records). Update any scheduled tasks or scripts that reference the old name.
+
+### Fixed
+
+- Removed `publishMigrations()` / `askToRunMigrations()` from the install command. Migrations auto-run, so the publish workflow produced duplicate migrations (e.g. a `create_filament_loginguard_attempts_table` conflict) for apps that had already published them.
+
 ## Unreleased
 
 ### Added
@@ -38,6 +52,7 @@ All notable changes to `filament-loginguard` will be documented in this file.
   - `admin_page.*` → `pages.attempts.*`; the new sessions page config lives at `pages.sessions.*`.
   - `sessions.new_device.notification.*` → `sessions.new_device.notifications.*`, with `to`/`queue` nested under `.mail`.
   - Republish the config file (`php artisan vendor:publish --tag="filament-loginguard-config" --force`) and update any customized values to the new key paths.
+  
 - "Locked until" and "Last attempt" columns now render as relative, badge-styled times (e.g. "15 minutes", "15 minutes ago") instead of absolute datetimes, with the exact datetime available on hover.
 - The "online now" threshold is now `sessions.online_threshold_seconds` (default 60s), narrowed from 5 minutes, so only genuinely-active sessions show "Online now".
 - Empty "Successful" and "New device" table cells render a "-" placeholder instead of a 0 badge or blank cell.
