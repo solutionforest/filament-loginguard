@@ -1,5 +1,5 @@
 <a href="https://github.com/solutionforest/filament-loginguard" class="filament-hidden">
-<img style="width: 100%; max-width: 100%;" alt="filament-loginguard-art" src=".github/art/cover.jpeg">
+<img style="width: 100%; max-width: 100%;" alt="filament-loginguard-art" src=".github/art/banner.jpeg">
 </a>
 
 <p align="center" class="flex items-center justify-center">
