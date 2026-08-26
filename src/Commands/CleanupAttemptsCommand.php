@@ -6,9 +6,9 @@ use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 
-class CleanupCommand extends Command
+class CleanupAttemptsCommand extends Command
 {
-    public $signature = 'filament-loginguard:cleanup {--all : Delete every recorded attempt row}';
+    public $signature = 'filament-loginguard:cleanup-attempts {--all : Delete every recorded attempt row}';
 
     public $description = 'Delete expired and stale login attempt records';
 

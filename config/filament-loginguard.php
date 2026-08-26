@@ -96,6 +96,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Maintenance
+    |--------------------------------------------------------------------------
+    */
+    'maintenance' => [
+        // Delete stale, expired attempt records. When `enabled` is true, the
+        // package registers the command with Laravel's scheduler automatically;
+        // otherwise schedule it yourself in routes/console.php. `expression` is
+        // a cron expression (default: every day at midnight).
+        'cleanup_attempts' => [
+            'enabled' => false,
+            'expression' => '0 0 * * *',
+        ],
+
+        // Delete expired session rows. Only registered when `enabled` is true
+        // AND SESSION_DRIVER=database. `expression` is a cron expression
+        // (default: every hour).
+        'cleanup_sessions' => [
+            'enabled' => false,
+            'expression' => '0 * * * *',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Admin pages
     |--------------------------------------------------------------------------
     */

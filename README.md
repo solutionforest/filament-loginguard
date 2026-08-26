@@ -67,7 +67,7 @@ Enterprise-grade login security for Filament and Laravel — persistent brute-fo
 - [Compatibility](#compatibility)
 - [Installation](#installation)
   - [1. Install the Package](#1-install-the-package)
-  - [2. Publish and Migrate](#2-publish-and-migrate)
+  - [2. Publish the Config and Migrate](#2-publish-the-config-and-migrate)
   - [3. Register the Admin Pages](#3-register-the-admin-pages)
 - [How it works](#how-it-works)
 - [Session management](#session-management)
@@ -92,12 +92,11 @@ You can install the package via composer:
 composer require solution-forest/filament-loginguard
 ```
 
-### 2. Publish and Migrate
+### 2. Publish the Config and Migrate
 
-Publish and run the migrations, and publish the config file:
+Migrations are loaded automatically, so you only need to publish the config file and run `migrate`:
 
 ```bash
-php artisan vendor:publish --tag="filament-loginguard-migrations"
 php artisan vendor:publish --tag="filament-loginguard-config"
 php artisan migrate
 ```
@@ -167,7 +166,7 @@ Requires `SESSION_DRIVER=database`. The **User Sessions** admin page lists every
 
 ## Configuration
 
-This is the contents of the published config file (`config/filament-loginguard.php`), grouped into three sections: `lockout` (brute-force protection behavior), `sessions` (active-session tracking behavior), and `pages` (Filament admin page wiring for both features):
+This is the contents of the published config file (`config/filament-loginguard.php`), grouped into four sections: `lockout` (brute-force protection behavior), `sessions` (active-session tracking behavior), `maintenance` (optional auto-scheduling), and `pages` (Filament admin page wiring for both features):
 
 ```php
 return [
@@ -220,6 +219,18 @@ return [
         ],
     ],
 
+    'maintenance' => [
+        'cleanup_attempts' => [           // delete stale attempt records
+            'enabled' => false,           // false = schedule it yourself in routes/console.php
+            'expression' => '0 0 * * *',  // cron expression (default: daily at midnight)
+        ],
+
+        'cleanup_sessions' => [           // delete expired session rows (needs SESSION_DRIVER=database)
+            'enabled' => false,
+            'expression' => '0 * * * *',  // cron expression (default: hourly)
+        ],
+    ],
+
     'pages' => [
         'attempts' => [
             'enabled' => true,
@@ -266,8 +277,8 @@ return [
 Delete stale, expired attempt records (outside the decay window with no active lock):
 
 ```bash
-php artisan filament-loginguard:cleanup
-php artisan filament-loginguard:cleanup --all   # delete every record
+php artisan filament-loginguard:cleanup-attempts
+php artisan filament-loginguard:cleanup-attempts --all   # delete every record
 ```
 
 Delete expired session rows (Laravel's session garbage collection is probabilistic, so rows from closed browsers can linger):
@@ -282,9 +293,11 @@ Schedule both in `routes/console.php` for automatic upkeep:
 ```php
 use Illuminate\Support\Facades\Schedule;
 
-Schedule::command('filament-loginguard:cleanup')->daily();
+Schedule::command('filament-loginguard:cleanup-attempts')->daily();
 Schedule::command('filament-loginguard:cleanup-sessions')->hourly();
 ```
+
+Alternatively, set `maintenance.cleanup_attempts.enabled` / `maintenance.cleanup_sessions.enabled` to `true` in the config and the package registers them for you using each command's `expression` cron value (`cleanup-sessions` only when `SESSION_DRIVER=database`). Prefer scheduling manually when you need a custom frequency, timezone, or `onOneServer()`.
 
 ## Testing
 

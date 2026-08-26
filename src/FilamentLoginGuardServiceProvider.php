@@ -8,10 +8,11 @@ use Filament\Support\Facades\FilamentIcon;
 use Illuminate\Auth\Events\Attempting;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Filesystem\Filesystem;
 use Livewire\Features\SupportTesting\Testable;
-use SolutionForest\FilamentLoginGuard\Commands\CleanupCommand;
+use SolutionForest\FilamentLoginGuard\Commands\CleanupAttemptsCommand;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupSessionsCommand;
 use SolutionForest\FilamentLoginGuard\Listeners\AuthenticationListener;
 use SolutionForest\FilamentLoginGuard\Testing\TestsFilamentLoginGuard;
@@ -42,8 +43,6 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
             ->hasInstallCommand(function (InstallCommand $command) {
                 $command
                     ->publishConfigFile()
-                    ->publishMigrations()
-                    ->askToRunMigrations()
                     ->askToStarRepoOnGitHub('solutionforest/filament-loginguard');
             });
     }
@@ -87,6 +86,33 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
         $events->listen(Attempting::class, [AuthenticationListener::class, 'handleAttempting']);
         $events->listen(Failed::class, [AuthenticationListener::class, 'handleFailed']);
         $events->listen(Login::class, [AuthenticationListener::class, 'handleLogin']);
+
+        $this->registerScheduledTasks();
+    }
+
+    /**
+     * Optionally auto-register the cleanup commands with Laravel's scheduler.
+     * Each command is opt-in via its `maintenance.*.enabled` flag, and the
+     * sessions cleanup only runs with database sessions.
+     */
+    protected function registerScheduledTasks(): void
+    {
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            if ((bool) config('filament-loginguard.maintenance.cleanup_attempts.enabled', false)) {
+                $schedule->command('filament-loginguard:cleanup-attempts')
+                    ->cron((string) config('filament-loginguard.maintenance.cleanup_attempts.expression', '0 0 * * *'))
+                    ->withoutOverlapping();
+            }
+
+            if (
+                (bool) config('filament-loginguard.maintenance.cleanup_sessions.enabled', false)
+                && config('session.driver') === 'database'
+            ) {
+                $schedule->command('filament-loginguard:cleanup-sessions')
+                    ->cron((string) config('filament-loginguard.maintenance.cleanup_sessions.expression', '0 * * * *'))
+                    ->withoutOverlapping();
+            }
+        });
     }
 
     protected function getAssetPackageName(): ?string
@@ -108,7 +134,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
     protected function getCommands(): array
     {
         return [
-            CleanupCommand::class,
+            CleanupAttemptsCommand::class,
             CleanupSessionsCommand::class,
         ];
     }
