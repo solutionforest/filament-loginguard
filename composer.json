@@ -89,10 +89,7 @@
         "laravel": {
             "providers": [
                 "SolutionForest\\FilamentLoginGuard\\FilamentLoginGuardServiceProvider"
-            ],
-            "aliases": {
-                "FilamentLoginGuard": "SolutionForest\\FilamentLoginGuard\\Facades\\FilamentLoginGuard"
-            }
+            ]
         }
     },
     "config": {

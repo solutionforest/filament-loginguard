@@ -3,10 +3,12 @@
 use Carbon\Carbon;
 use Filament\Facades\Filament;
 use Filament\Panel;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Livewire;
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
 use SolutionForest\FilamentLoginGuard\Models\UserSession;
 use SolutionForest\FilamentLoginGuard\Pages\UserSessions;
+use SolutionForest\FilamentLoginGuard\Tests\Support\TestCluster;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestUser;
 
 beforeEach(function () {
@@ -112,4 +114,78 @@ it('parses a user agent without a browser name', function () {
     ]);
 
     expect($session->device_name)->toBe('macOS');
+});
+
+it('revokes multiple sessions at once', function () {
+    UserSession::query()->create([
+        'id' => 'session-bulk-a',
+        'user_id' => 42,
+        'payload' => 'test',
+        'last_activity' => now()->timestamp,
+    ]);
+
+    UserSession::query()->create([
+        'id' => 'session-bulk-b',
+        'user_id' => 43,
+        'payload' => 'test',
+        'last_activity' => now()->timestamp,
+    ]);
+
+    $records = UserSession::query()->whereIn('id', ['session-bulk-a', 'session-bulk-b'])->get();
+
+    Livewire::test(UserSessions::class)
+        ->callTableBulkAction('revokeMany', $records);
+
+    expect(UserSession::query()->count())->toBe(0);
+});
+
+it('denies access and hides navigation when disabled', function () {
+    config()->set('filament-loginguard.pages.sessions.enabled', false);
+
+    expect(UserSessions::canAccess())->toBeFalse()
+        ->and(UserSessions::shouldRegisterNavigation())->toBeFalse();
+});
+
+it('gates the page behind an ability when configured', function () {
+    config()->set('filament-loginguard.pages.sessions.authorize', 'view-user-sessions');
+
+    Gate::define('view-user-sessions', fn (): bool => false);
+
+    expect(UserSessions::canAccess())->toBeFalse();
+
+    Gate::define('view-user-sessions', fn (): bool => true);
+
+    expect(UserSessions::canAccess())->toBeTrue();
+});
+
+it('uses the configured slug', function () {
+    expect(UserSessions::getDefaultSlug())->toBe('user-sessions');
+
+    config()->set('filament-loginguard.pages.sessions.slug', 'active-sessions');
+
+    expect(UserSessions::getDefaultSlug())->toBe('active-sessions');
+});
+
+it('nests under a cluster when configured', function () {
+    expect(UserSessions::getCluster())->toBeNull();
+
+    config()->set('filament-loginguard.pages.sessions.cluster', TestCluster::class);
+
+    expect(UserSessions::getCluster())->toBe(TestCluster::class);
+
+    config()->set('filament-loginguard.pages.sessions.cluster', 'Not\\A\\Cluster');
+
+    expect(UserSessions::getCluster())->toBeNull();
+});
+
+it('uses configured navigation settings', function () {
+    config()->set('filament-loginguard.pages.sessions.navigation_label', 'Sessions');
+    config()->set('filament-loginguard.pages.sessions.navigation_icon', 'heroicon-o-clock');
+    config()->set('filament-loginguard.pages.sessions.navigation_group', 'Security');
+    config()->set('filament-loginguard.pages.sessions.navigation_sort', 5);
+
+    expect(UserSessions::getNavigationLabel())->toBe('Sessions')
+        ->and(UserSessions::getNavigationIcon())->toBe('heroicon-o-clock')
+        ->and(UserSessions::getNavigationGroup())->toBe('Security')
+        ->and(UserSessions::getNavigationSort())->toBe(5);
 });
