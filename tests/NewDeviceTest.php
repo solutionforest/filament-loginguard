@@ -28,9 +28,8 @@ it('records a device fingerprint on login', function () {
         ->exists())->toBeTrue();
 });
 
-it('notifies only the first time a device is seen', function () {
+it('notifies the account owner only the first time a device is seen', function () {
     config()->set('filament-loginguard.sessions.new_device.notifications.enabled', true);
-    config()->set('filament-loginguard.sessions.new_device.notifications.mail.to', ['security@example.com']);
 
     Notification::fake();
 
@@ -38,6 +37,21 @@ it('notifies only the first time a device is seen', function () {
     event(new Login('web', new TestUser(email: 'a@example.com'), false));
 
     Notification::assertSentOnDemandTimes(NewDeviceLoginNotification::class, 1);
+
+    Notification::assertSentOnDemand(
+        NewDeviceLoginNotification::class,
+        fn (NewDeviceLoginNotification $notification, array $channels, object $notifiable): bool => $notifiable->routes['mail'] === 'a@example.com'
+    );
+});
+
+it('does not notify when the account has no email', function () {
+    config()->set('filament-loginguard.sessions.new_device.notifications.enabled', true);
+
+    Notification::fake();
+
+    event(new Login('web', new TestUser(email: null), false));
+
+    Notification::assertNothingSent();
 });
 
 it('flags sessions whose device fingerprint is new', function () {

@@ -4,6 +4,10 @@ All notable changes to `filament-loginguard` will be documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- **Breaking:** the new-device notification (`sessions.new_device.notifications`) now emails the account owner instead of a static `mail.to` recipient list. The `sessions.new_device.notifications.mail.to` config key is removed; only `mail.queue` remains. Accounts without an email are skipped.
+
 ## v0.3.0 - 2026-08-26
 
 ### Added

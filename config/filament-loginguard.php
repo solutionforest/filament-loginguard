@@ -83,10 +83,9 @@ return [
             'enabled' => true,
             'window_hours' => 24,
             'notifications' => [
-                // Disabled by default: the plugin cannot know who to notify.
+                // Emails the account owner the first time a device is seen. Disabled by default.
                 'enabled' => false,
                 'mail' => [
-                    'to' => [],
                     // Queue name to send on, or false to send synchronously.
                     'queue' => false,
                 ],

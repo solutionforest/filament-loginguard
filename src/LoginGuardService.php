@@ -234,7 +234,7 @@ final class LoginGuardService
 
     /**
      * Record the browser+platform fingerprint for a user on login. When the device
-     * is seen for the first time, notify the configured recipients (if any).
+     * is seen for the first time, notify the account owner (if it has an email).
      */
     public function recordDevice(int $userId, ?string $userAgent, ?string $email): void
     {
@@ -254,8 +254,8 @@ final class LoginGuardService
             ['first_seen_at' => Carbon::now()],
         );
 
-        if ($device->wasRecentlyCreated) {
-            $this->notifyNewDevice($fingerprint, $email ?? (string) $userId);
+        if ($device->wasRecentlyCreated && filled($email)) {
+            $this->notifyNewDevice($fingerprint, $email);
         }
     }
 
@@ -285,17 +285,11 @@ final class LoginGuardService
     }
 
     /**
-     * Send the new-device notification to the configured recipients.
+     * Send the new-device notification to the account owner.
      */
     private function notifyNewDevice(string $fingerprint, string $email): void
     {
         if (! (bool) config('filament-loginguard.sessions.new_device.notifications.enabled', false)) {
-            return;
-        }
-
-        $recipients = (array) config('filament-loginguard.sessions.new_device.notifications.mail.to', []);
-
-        if ($recipients === []) {
             return;
         }
 
@@ -307,14 +301,12 @@ final class LoginGuardService
 
         $queue = config('filament-loginguard.sessions.new_device.notifications.mail.queue', false);
 
-        foreach ($recipients as $recipient) {
-            $notifiable = Notification::route('mail', $recipient);
+        $notifiable = Notification::route('mail', $email);
 
-            if ($queue !== false) {
-                $notifiable->notify($notification->onQueue((string) $queue));
-            } else {
-                $notifiable->notifyNow($notification);
-            }
+        if ($queue !== false) {
+            $notifiable->notify($notification->onQueue((string) $queue));
+        } else {
+            $notifiable->notifyNow($notification);
         }
     }
 

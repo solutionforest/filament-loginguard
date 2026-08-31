@@ -166,7 +166,7 @@ Requires `SESSION_DRIVER=database`. The **User Sessions** admin page lists every
 
 ![User Sessions page](.github/art/sessions-page.png)
 
-- **New-device detection**: each login's browser+platform is fingerprinted (`sessions.new_device`); a session is flagged "New" on the page when its fingerprint was first seen within `window_hours`, and an optional email notifies the configured recipients the first time a device is seen.
+- **New-device detection**: each login's browser+platform is fingerprinted (`sessions.new_device`); a session is flagged "New" on the page when its fingerprint was first seen within `window_hours`, and an optional email notifies the account owner the first time a device is seen.
 - **Concurrent session limits**: set `sessions.concurrent_limit` to cap sessions per user — the oldest sessions are evicted to make room when a new login would exceed the limit.
 - Closing the browser without logging out (or backgrounding the tab) simply stops updating `last_activity`, so the session ages out naturally and expires after `session.lifetime`; sweep expired rows with the `filament-loginguard:cleanup-sessions` command.
 
@@ -216,9 +216,8 @@ return [
             'window_hours' => 24,          // sessions first seen within this window are flagged "New"
 
             'notifications' => [
-                'enabled' => false,        // disabled by default: the plugin cannot know who to notify
+                'enabled' => false,        // emails the account owner the first time a device is seen
                 'mail' => [
-                    'to' => [],
                     'queue' => false,
                 ],
             ],
