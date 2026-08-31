@@ -2,6 +2,20 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
+## v0.4.0 - 2026-08-31
+
+### Added
+
+- Livewire test helpers `assertLoginGuardAttempts`, `assertLoginGuardLocked`, and `assertLoginGuardNotLocked`, mixed into `Livewire\Features\SupportTesting\Testable` for asserting login-guard state in application tests.
+
+### Changed
+
+- **Breaking:** the new-device notification (`sessions.new_device.notifications`) now emails the account owner instead of a static `mail.to` recipient list. The `sessions.new_device.notifications.mail.to` config key is removed; only `mail.queue` remains. Accounts without an email are skipped.
+
+### Removed
+
+- **Breaking:** removed the unused `FilamentLoginGuard` class and the `FilamentLoginGuard` facade alias (skeleton stubs that exposed no API). Use the `LoginGuardService` (resolvable via the container) instead.
+
 ## Unreleased
 
 ### Added
@@ -46,6 +60,7 @@ All notable changes to `filament-loginguard` will be documented in this file.
 ### Changed
 
 - **Breaking:** restructured the config file into three top-level groups — `lockout` (brute-force protection), `sessions` (session tracking behavior), `pages` (admin page wiring for both features):
+  
   - Flat top-level keys (`enabled`, `max_attempts`, `lockout_minutes`, `ban_hours`, `attempts_window_minutes`, `tracking.*`, `whitelisted_ips`, `whitelisted_emails`, `notifications.*`) moved under `lockout.*`.
   - `lockout_minutes` → `lockout.initial_minutes`; `ban_hours` → `lockout.escalation_hours`.
   - `whitelisted_ips` / `whitelisted_emails` → `lockout.whitelist.ips` / `lockout.whitelist.emails`.
@@ -54,8 +69,11 @@ All notable changes to `filament-loginguard` will be documented in this file.
   - Republish the config file (`php artisan vendor:publish --tag="filament-loginguard-config" --force`) and update any customized values to the new key paths.
   
 - "Locked until" and "Last attempt" columns now render as relative, badge-styled times (e.g. "15 minutes", "15 minutes ago") instead of absolute datetimes, with the exact datetime available on hover.
+  
 - The "online now" threshold is now `sessions.online_threshold_seconds` (default 60s), narrowed from 5 minutes, so only genuinely-active sessions show "Online now".
+  
 - Empty "Successful" and "New device" table cells render a "-" placeholder instead of a 0 badge or blank cell.
+  
 
 ### Fixed
 
