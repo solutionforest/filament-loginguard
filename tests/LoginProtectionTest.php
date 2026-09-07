@@ -176,6 +176,20 @@ it('locks an email when aggregate attempts across ips reach the threshold', func
         ->and($rows->every(fn (LoginAttempt $row): bool => $row->isLocked()))->toBeTrue();
 });
 
+it('treats an IPv4-mapped IPv6 address as the same key as its IPv4 form', function () {
+    config()->set('filament-loginguard.lockout.max_attempts', 2);
+
+    request()->server->set('REMOTE_ADDR', '1.2.3.4');
+    ($this->failed)();
+
+    request()->server->set('REMOTE_ADDR', '::ffff:1.2.3.4');
+    ($this->failed)();
+
+    expect(LoginAttempt::query()->count())->toBe(1)
+        ->and(LoginAttempt::query()->sole()->ip)->toBe('1.2.3.4')
+        ->and(LoginAttempt::query()->sole()->isLocked())->toBeTrue();
+});
+
 it('tracks exact pairs only when both aggregates are off', function () {
     config()->set('filament-loginguard.lockout.max_attempts', 3);
     config()->set('filament-loginguard.lockout.tracking.per_ip', false);

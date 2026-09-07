@@ -12,6 +12,7 @@ use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Models\UserSession;
 use SolutionForest\FilamentLoginGuard\Notifications\AccountLockedNotification;
 use SolutionForest\FilamentLoginGuard\Notifications\NewDeviceLoginNotification;
+use SolutionForest\FilamentLoginGuard\Support\IpAddress;
 use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
 
 final class LoginGuardService
@@ -26,7 +27,14 @@ final class LoginGuardService
      */
     public function isWhitelisted(string $ip, ?string $email): bool
     {
-        if (in_array($ip, (array) config('filament-loginguard.lockout.whitelist.ips', []), true)) {
+        $ip = IpAddress::normalize($ip);
+
+        $whitelistedIps = array_map(
+            static fn (mixed $entry): string => IpAddress::normalize(is_string($entry) ? $entry : ''),
+            (array) config('filament-loginguard.lockout.whitelist.ips', []),
+        );
+
+        if (in_array($ip, $whitelistedIps, true)) {
             return true;
         }
 
@@ -296,7 +304,7 @@ final class LoginGuardService
         $notification = new NewDeviceLoginNotification(
             email: $email,
             device: $fingerprint,
-            ip: (string) request()->ip(),
+            ip: IpAddress::normalize((string) request()->ip()),
         );
 
         $queue = config('filament-loginguard.sessions.new_device.notifications.mail.queue', false);

@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use SolutionForest\FilamentLoginGuard\Events\LoginLockedOut;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
+use SolutionForest\FilamentLoginGuard\Support\IpAddress;
 
 class AuthenticationListener
 {
@@ -24,7 +25,7 @@ class AuthenticationListener
             return;
         }
 
-        $ip = (string) request()->ip();
+        $ip = IpAddress::normalize((string) request()->ip());
         $email = $this->emailFromCredentials($event->credentials);
 
         if ($this->service->isWhitelisted($ip, $email)) {
@@ -53,7 +54,7 @@ class AuthenticationListener
             return; // nothing to key on
         }
 
-        $ip = (string) request()->ip();
+        $ip = IpAddress::normalize((string) request()->ip());
 
         if ($this->service->isWhitelisted($ip, $email) || $this->service->isLocked($ip, $email)) {
             return; // never count/extend during an active lock
@@ -86,7 +87,7 @@ class AuthenticationListener
             return;
         }
 
-        $ip = (string) request()->ip();
+        $ip = IpAddress::normalize((string) request()->ip());
 
         $email = null;
 
