@@ -19,6 +19,13 @@ it('creates the attempts table with the expected columns', function () {
         ]))->toBeTrue();
 });
 
+it('indexes the attempt aggregate lookups', function () {
+    $indexes = collect(Schema::getIndexListing('filament_loginguard_attempts'));
+
+    expect($indexes)->toContain('filament_loginguard_attempts_ip_last_attempt_index')
+        ->and($indexes)->toContain('filament_loginguard_attempts_email_last_attempt_index');
+});
+
 it('enforces the unique ip and email pair', function () {
     $data = [
         'ip' => '1.2.3.4',

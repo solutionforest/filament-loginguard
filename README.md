@@ -94,14 +94,14 @@ composer require solution-forest/filament-loginguard
 
 ### 2. Publish the Config and Migrate
 
-Migrations are loaded automatically, so you only need to publish the config file and run `migrate`:
+Migrations are loaded and run automatically (`runsMigrations()`), so you only need to publish the config file and run `migrate`:
 
 ```bash
 php artisan vendor:publish --tag="filament-loginguard-config"
 php artisan migrate
 ```
 
-Or run the interactive install command, which does all of the above:
+The interactive install command publishes the config file for you and reminds you to star the repo:
 
 ```bash
 php artisan filament-loginguard:install
@@ -156,7 +156,15 @@ Lockout semantics:
 - A lock is **never extended** by further attempts while it is active; a successful login resets everything (forgiving legitimate owners).
 - The lockout message is rendered in the Filament login form (`data.email` error key) and as a standard `email` validation error in non-Filament forms (redirect back for web requests, 422 for JSON).
 - Localhost (`127.0.0.1`, `::1`) is whitelisted by default.
+- **Behind a proxy/CDN?** Set `lockout.trusted_proxies` to your proxy IPs or CIDR ranges. When the immediate request IP matches one, the real client IP is read from `X-Forwarded-For` (walking right-to-left past trusted proxies, so clients cannot spoof it). Laravel's own TrustProxies middleware may already rewrite `request()->ip()` — prefer configuring it there if you use the standard mechanism.
 - A `LoginLockedOut` event is dispatched on every lockout — listen for it to wire up custom alerting (Slack, webhooks, etc.) alongside or instead of the built-in email notification.
+
+> [!WARNING]
+> **Email lockouts can be abused as a denial-of-service vector.** An attacker who knows (or guesses) an account's email can deliberately fail logins to lock that email out — the legitimate owner is then blocked too. Mitigations:
+>
+> - Whitelist critical accounts via `lockout.whitelist.emails` so they can always log in.
+> - Keep `lockout.initial_minutes` moderate and review the `escalation_hours` ladder.
+> - If you run behind a proxy/CDN, configure `lockout.trusted_proxies` (below) so lockouts key on the *real* client IP — otherwise all traffic appears to come from the proxy IP and a single attacker can lock out everyone.
 
 ![Login Attempts page](.github/art/attempts-page.png)
 
@@ -182,6 +190,7 @@ return [
         'initial_minutes' => 15,           // duration of the first lockout
         'escalation_hours' => [24, 72, 168], // 2nd, 3rd, 4th+ lockout durations; last value repeats
         'attempts_window_minutes' => 30,   // decay + aggregate counting window
+        'trusted_proxies' => [],           // proxy/CDN IPs or CIDRs; X-Forwarded-For is honored for these
 
         'tracking' => [
             'per_ip' => true,              // aggregate attempts across emails per IP

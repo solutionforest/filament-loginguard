@@ -25,7 +25,7 @@ class AuthenticationListener
             return;
         }
 
-        $ip = IpAddress::normalize((string) request()->ip());
+        $ip = IpAddress::fromRequest();
         $email = $this->emailFromCredentials($event->credentials);
 
         if ($this->service->isWhitelisted($ip, $email)) {
@@ -54,7 +54,7 @@ class AuthenticationListener
             return; // nothing to key on
         }
 
-        $ip = IpAddress::normalize((string) request()->ip());
+        $ip = IpAddress::fromRequest();
 
         if ($this->service->isWhitelisted($ip, $email) || $this->service->isLocked($ip, $email)) {
             return; // never count/extend during an active lock
@@ -87,7 +87,7 @@ class AuthenticationListener
             return;
         }
 
-        $ip = IpAddress::normalize((string) request()->ip());
+        $ip = IpAddress::fromRequest();
 
         $email = null;
 

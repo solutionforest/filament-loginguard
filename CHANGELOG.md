@@ -7,10 +7,13 @@ All notable changes to `filament-loginguard` will be documented in this file.
 ### Added
 
 - IP address normalization: IPv4-mapped IPv6 addresses (`::ffff:1.2.3.4`) are reduced to their plain IPv4 form, and IPv6 addresses are canonicalized, so the same client always maps to the same lockout key regardless of protocol or textual representation.
+- Trusted proxy support via `lockout.trusted_proxies` (IPs or CIDR ranges): when the immediate request IP matches a trusted proxy, the real client IP is read from the `X-Forwarded-For` header (walking right-to-left past trusted proxies, so clients cannot spoof it).
+- Composite indexes on `filament_loginguard_attempts` (`ip, last_attempt_at` and `email, last_attempt_at`) so the per-IP / per-email aggregate SUM queries stay fast as the table grows.
 
 ### Changed
 
 - The minimum supported Filament version is now 5.7.6 (earlier 5.x releases have known security advisories).
+- Clarified the README install instructions: `filament-loginguard:install` publishes the config file only; migrations run automatically and `php artisan migrate` applies them.
 
 ## v0.4.0 - 2026-08-31
 

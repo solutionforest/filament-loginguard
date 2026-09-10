@@ -28,6 +28,14 @@ return [
         // (b) this is also the window used for the aggregate per-IP / per-email sums.
         'attempts_window_minutes' => 30,
 
+        // IPs / CIDR ranges of proxies, load balancers or CDNs in front of the app.
+        // When the immediate request IP matches one of these, the real client IP is
+        // read from the X-Forwarded-For header (walking right-to-left past every
+        // trusted proxy, so clients cannot spoof it). Empty array = use the request
+        // IP as-is. Note: Laravel's own TrustProxies middleware may already rewrite
+        // request()->ip() — configure it there if you prefer standard handling.
+        'trusted_proxies' => [],
+
         'tracking' => [
             // Lock out an IP when the SUM of attempts across all emails used from it reaches `max_attempts`.
             'per_ip' => true,

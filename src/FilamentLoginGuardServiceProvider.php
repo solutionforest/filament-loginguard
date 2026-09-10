@@ -172,6 +172,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
             'create_filament_loginguard_attempts_table',
             'update_filament_loginguard_attempts_table_add_user_agent',
             'update_filament_loginguard_attempts_table_add_success',
+            'update_filament_loginguard_attempts_table_add_composite_indexes',
             'create_filament_loginguard_known_devices_table',
         ];
     }

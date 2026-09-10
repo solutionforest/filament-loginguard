@@ -304,7 +304,7 @@ final class LoginGuardService
         $notification = new NewDeviceLoginNotification(
             email: $email,
             device: $fingerprint,
-            ip: IpAddress::normalize((string) request()->ip()),
+            ip: IpAddress::fromRequest(),
         );
 
         $queue = config('filament-loginguard.sessions.new_device.notifications.mail.queue', false);
