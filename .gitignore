@@ -11,3 +11,6 @@ phpunit.xml
 phpstan.neon
 vendor
 workbench/storage
+
+/resources/dist/*
+!/resources/dist/.gitkeep
