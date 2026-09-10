@@ -38,6 +38,7 @@ Enterprise-grade login security for Filament and Laravel — persistent brute-fo
   - 🕸️ Cross-email (per-IP) and cross-IP (per-email) aggregation
   - 🧠 Attempt decay window
   - 🎯 IP & email whitelists
+  - 🔓 Self-service unlock link (anti-DoS) mailed to the blocked address
   - 🔔 Administrator lockout notifications (cooldown + queue support)
 - 👥 **Session Management**
   - 🖥️ Active-session listing with "last active" state
@@ -162,6 +163,7 @@ Lockout semantics:
 > [!WARNING]
 > **Email lockouts can be abused as a denial-of-service vector.** An attacker who knows (or guesses) an account's email can deliberately fail logins to lock that email out — the legitimate owner is then blocked too. Mitigations:
 >
+> - Enable **self-service unlock** (`lockout.notifications.self_unlock.enabled`): the lockout email sent to the blocked address carries a signed, single-use "unlock now" link, so the real owner can clear the lock immediately. Attempt counters are kept, so repeated lockouts still escalate. IP locks are never lifted this way.
 > - Whitelist critical accounts via `lockout.whitelist.emails` so they can always log in.
 > - Keep `lockout.initial_minutes` moderate and review the `escalation_hours` ladder.
 > - If you run behind a proxy/CDN, configure `lockout.trusted_proxies` (below) so lockouts key on the *real* client IP — otherwise all traffic appears to come from the proxy IP and a single attacker can lock out everyone.
@@ -209,6 +211,10 @@ return [
                 'to' => [],                // admin addresses; empty = no notifications
                 'cooldown_minutes' => 60,  // at most one notification per IP per window
                 'queue' => false,          // false = sync; queue name string = queued
+            ],
+            'self_unlock' => [
+                'enabled' => false,        // mail a signed, single-use unlock link to the blocked address
+                'link_ttl_minutes' => 60,  // how long the unlock link stays valid
             ],
         ],
     ],

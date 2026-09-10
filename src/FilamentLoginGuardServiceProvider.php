@@ -14,6 +14,7 @@ use Illuminate\Filesystem\Filesystem;
 use Livewire\Features\SupportTesting\Testable;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupAttemptsCommand;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupSessionsCommand;
+use SolutionForest\FilamentLoginGuard\Http\Controllers\SelfUnlockController;
 use SolutionForest\FilamentLoginGuard\Listeners\AuthenticationListener;
 use SolutionForest\FilamentLoginGuard\Testing\TestsFilamentLoginGuard;
 use Spatie\LaravelPackageTools\Commands\InstallCommand;
@@ -54,6 +55,15 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
+        // Self-service unlock route (signed, single-use link from the lockout email).
+        $this->app->make('router')
+            ->get('filament-loginguard/unlock/{email}', [
+                SelfUnlockController::class,
+                '__invoke',
+            ])
+            ->name('filament-loginguard.unlock')
+            ->middleware('web');
+
         // Asset Registration
         FilamentAsset::register(
             $this->getAssets(),

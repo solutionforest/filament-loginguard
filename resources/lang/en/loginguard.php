@@ -39,6 +39,8 @@ return [
             'ip' => 'IP address: :ip',
             'email' => 'Email: :email',
             'duration' => 'Blocked for :minutes minutes.',
+            'unlock_intro' => 'Was this not you? You can unlock your email immediately using the button below.',
+            'unlock_action' => 'Unlock my email',
         ],
         'new_device' => [
             'subject' => 'New device login detected',
@@ -75,5 +77,14 @@ return [
         'successful_logins_24h' => 'Successful logins (24h)',
         'last_24h' => 'Last 24 hours',
         'active_lockouts' => 'Active lockouts',
+    ],
+    'self_unlock' => [
+        'title' => 'Email unlocked',
+        'success' => 'Your email has been unlocked. You can try logging in again.',
+        'used_title' => 'Link already used',
+        'already_used' => 'This unlock link has already been used.',
+        'invalid_title' => 'Invalid link',
+        'invalid' => 'This unlock link is invalid or has expired.',
+        'no_locks' => 'There is no active lock on this email.',
     ],
 ];

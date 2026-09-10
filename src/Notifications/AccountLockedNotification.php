@@ -15,6 +15,7 @@ class AccountLockedNotification extends Notification implements ShouldQueue
         public readonly string $ip,
         public readonly string $email,
         public readonly int $minutes,
+        public readonly ?string $unlockUrl = null,
     ) {}
 
     /**
@@ -27,11 +28,18 @@ class AccountLockedNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
+        $mail = (new MailMessage)
             ->subject(__('filament-loginguard::loginguard.notifications.lockout.subject'))
             ->greeting(__('filament-loginguard::loginguard.notifications.lockout.greeting'))
             ->line(__('filament-loginguard::loginguard.notifications.lockout.ip', ['ip' => $this->ip]))
             ->line(__('filament-loginguard::loginguard.notifications.lockout.email', ['email' => $this->email]))
             ->line(__('filament-loginguard::loginguard.notifications.lockout.duration', ['minutes' => $this->minutes]));
+
+        if ($this->unlockUrl !== null) {
+            $mail->line(__('filament-loginguard::loginguard.notifications.lockout.unlock_intro'))
+                ->action(__('filament-loginguard::loginguard.notifications.lockout.unlock_action'), $this->unlockUrl);
+        }
+
+        return $mail;
     }
 }

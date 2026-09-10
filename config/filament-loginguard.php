@@ -66,6 +66,15 @@ return [
                 // Queue name to send on, or false to send synchronously.
                 'queue' => false,
             ],
+            // Self-service unlock (anti-DoS): the lockout email sent to the blocked
+            // address includes a signed, single-use "unlock now" link that clears
+            // the EMAIL lock only (IP locks are never lifted this way). The attempt
+            // counters are kept, so repeated lockouts still escalate. Off by default.
+            'self_unlock' => [
+                'enabled' => false,
+                // How long the unlock link stays valid, in minutes.
+                'link_ttl_minutes' => 60,
+            ],
         ],
     ],
 

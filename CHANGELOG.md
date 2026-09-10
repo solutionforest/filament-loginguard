@@ -9,6 +9,7 @@ All notable changes to `filament-loginguard` will be documented in this file.
 - IP address normalization: IPv4-mapped IPv6 addresses (`::ffff:1.2.3.4`) are reduced to their plain IPv4 form, and IPv6 addresses are canonicalized, so the same client always maps to the same lockout key regardless of protocol or textual representation.
 - Trusted proxy support via `lockout.trusted_proxies` (IPs or CIDR ranges): when the immediate request IP matches a trusted proxy, the real client IP is read from the `X-Forwarded-For` header (walking right-to-left past trusted proxies, so clients cannot spoof it).
 - Composite indexes on `filament_loginguard_attempts` (`ip, last_attempt_at` and `email, last_attempt_at`) so the per-IP / per-email aggregate SUM queries stay fast as the table grows.
+- Self-service unlock (anti-DoS): when `lockout.notifications.self_unlock.enabled`, the lockout email sent to the blocked address carries a signed, single-use "unlock now" link that clears the email lock immediately. Attempt counters are kept (repeat lockouts still escalate) and IP locks are never lifted through the link. Off by default.
 
 ### Changed
 

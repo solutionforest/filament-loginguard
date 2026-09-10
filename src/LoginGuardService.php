@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use SolutionForest\FilamentLoginGuard\Models\KnownDevice;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
@@ -320,6 +321,9 @@ final class LoginGuardService
 
     /**
      * Send the admin notification, throttled per-IP via the cache. Returns whether it was sent.
+     *
+     * When self-service unlock is enabled, the notification carries a signed,
+     * single-use unlock link addressed to the blocked email itself.
      */
     public function notifyLockout(string $ip, string $email, int $minutes): bool
     {
@@ -342,7 +346,12 @@ final class LoginGuardService
 
         cache()->put($cacheKey, true, $cooldownMinutes * 60);
 
-        $notification = new AccountLockedNotification(ip: $ip, email: $email, minutes: $minutes);
+        $notification = new AccountLockedNotification(
+            ip: $ip,
+            email: $email,
+            minutes: $minutes,
+            unlockUrl: $this->selfUnlockUrl($email),
+        );
 
         $queue = config('filament-loginguard.lockout.notifications.mail.queue', false);
 
@@ -357,6 +366,73 @@ final class LoginGuardService
         }
 
         return true;
+    }
+
+    /**
+     * Signed, single-use URL that clears the email lock, or null when self-unlock
+     * is disabled. The URL is emailed to the blocked address itself, so only the
+     * mailbox owner can act on it.
+     */
+    public function selfUnlockUrl(string $email): ?string
+    {
+        if (! (bool) config('filament-loginguard.lockout.notifications.self_unlock.enabled', false)) {
+            return null;
+        }
+
+        $ttlMinutes = max(1, (int) config('filament-loginguard.lockout.notifications.self_unlock.link_ttl_minutes', 60));
+
+        try {
+            return URL::temporarySignedRoute(
+                'filament-loginguard.unlock',
+                now()->addMinutes($ttlMinutes),
+                ['email' => $email],
+            );
+        } catch (\Throwable) {
+            // Route not registered (e.g. tests without the package routes).
+            return null;
+        }
+    }
+
+    /**
+     * Self-service unlock: clear the EMAIL lock for every row of the given address.
+     *
+     * Only `locked_until` is cleared; `attempts` and `lockout_count` are kept so a
+     * repeat offender (or an attacker re-triggering the lock) still escalates to
+     * the next duration. IP locks are deliberately not touched — otherwise an
+     * attacker could unlock their own IP by triggering a lock on an email they
+     * control and clicking the link.
+     */
+    public function unlockEmail(string $email): int
+    {
+        $email = Str::lower(trim($email));
+
+        if ($email === '') {
+            return 0;
+        }
+
+        return LoginAttempt::query()
+            ->where('email', $email)
+            ->whereNotNull('locked_until')
+            ->update(['locked_until' => null]);
+    }
+
+    /**
+     * Mark a self-unlock signature as consumed so the same signed URL cannot be
+     * replayed. The entry lives as long as the link TTL.
+     */
+    public function markUnlockTokenUsed(string $signature, int $ttlSeconds): void
+    {
+        cache()->put($this->unlockTokenKey($signature), true, max(1, $ttlSeconds));
+    }
+
+    public function isUnlockTokenUsed(string $signature): bool
+    {
+        return (bool) cache()->get($this->unlockTokenKey($signature));
+    }
+
+    private function unlockTokenKey(string $signature): string
+    {
+        return 'filament-loginguard:unlock-used:' . sha1($signature);
     }
 
     /**
