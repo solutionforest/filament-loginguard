@@ -2,7 +2,9 @@
 
 use Carbon\Carbon;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Notifications\SendQueuedNotifications;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use SolutionForest\FilamentLoginGuard\Models\KnownDevice;
 use SolutionForest\FilamentLoginGuard\Models\UserSession;
 use SolutionForest\FilamentLoginGuard\Notifications\NewDeviceLoginNotification;
@@ -52,6 +54,47 @@ it('does not notify when the account has no email', function () {
     event(new Login('web', new TestUser(email: null), false));
 
     Notification::assertNothingSent();
+});
+
+it('does not record a device when the user agent cannot be parsed', function () {
+    request()->headers->set('User-Agent', 'test');
+
+    event(new Login('web', new TestUser(email: 'a@example.com'), false));
+
+    expect(KnownDevice::query()->count())->toBe(0);
+});
+
+it('does not record devices when new-device tracking is disabled', function () {
+    config()->set('filament-loginguard.sessions.new_device.enabled', false);
+
+    event(new Login('web', new TestUser(email: 'a@example.com'), false));
+
+    expect(KnownDevice::query()->count())->toBe(0);
+});
+
+it('queues the new-device notification when a queue is configured', function () {
+    config()->set('filament-loginguard.sessions.new_device.notifications.enabled', true);
+    config()->set('filament-loginguard.sessions.new_device.notifications.mail.queue', 'notifications');
+
+    Queue::fake();
+
+    event(new Login('web', new TestUser(email: 'a@example.com'), false));
+
+    Queue::assertPushedOn(
+        'notifications',
+        SendQueuedNotifications::class,
+        fn (SendQueuedNotifications $job): bool => $job->notification instanceof NewDeviceLoginNotification
+    );
+});
+
+it('sends the new-device notification synchronously by default', function () {
+    config()->set('filament-loginguard.sessions.new_device.notifications.enabled', true);
+
+    Notification::fake();
+
+    event(new Login('web', new TestUser(email: 'a@example.com'), false));
+
+    Notification::assertSentOnDemandTimes(NewDeviceLoginNotification::class, 1);
 });
 
 it('flags sessions whose device fingerprint is new', function () {

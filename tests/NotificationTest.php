@@ -2,7 +2,9 @@
 
 use Carbon\Carbon;
 use Illuminate\Auth\Events\Failed;
+use Illuminate\Notifications\SendQueuedNotifications;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Notifications\AccountLockedNotification;
@@ -88,4 +90,19 @@ it('sends again after the cooldown expires', function () {
     ($this->failed)();
 
     Notification::assertSentOnDemandTimes(AccountLockedNotification::class, 2);
+});
+
+it('queues the lockout notification when a queue is configured', function () {
+    config()->set('filament-loginguard.lockout.notifications.mail.queue', 'notifications');
+
+    Queue::fake();
+
+    ($this->failed)();
+    ($this->failed)();
+
+    Queue::assertPushedOn(
+        'notifications',
+        SendQueuedNotifications::class,
+        fn (SendQueuedNotifications $job): bool => $job->notification instanceof AccountLockedNotification
+    );
 });

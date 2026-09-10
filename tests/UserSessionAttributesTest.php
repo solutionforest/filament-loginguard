@@ -1,6 +1,7 @@
 <?php
 
 use Carbon\Carbon;
+use SolutionForest\FilamentLoginGuard\Models\KnownDevice;
 use SolutionForest\FilamentLoginGuard\Models\UserSession;
 use Workbench\App\Models\User;
 use Workbench\Database\Factories\UserFactory;
@@ -129,4 +130,61 @@ it('uses the configured sessions table', function () {
     config()->set('filament-loginguard.sessions.table', 'custom_sessions');
 
     expect((new UserSession)->getTable())->toBe('custom_sessions');
+});
+
+it('returns null as user email when the user model class does not exist', function () {
+    config()->set('filament-loginguard.sessions.user_model', 'Not\\A\\Real\\User');
+
+    $session = UserSession::query()->create([
+        'id' => 'session-bad-user-model',
+        'user_id' => 1,
+        'payload' => 'test',
+        'last_activity' => now()->timestamp,
+    ]);
+
+    expect($session->user_email)->toBeNull();
+});
+
+it('does not flag new-device sessions when new-device tracking is disabled', function () {
+    config()->set('filament-loginguard.sessions.new_device.enabled', false);
+
+    KnownDevice::query()->create([
+        'user_id' => 42,
+        'fingerprint' => 'Chrome on macOS',
+        'first_seen_at' => now(),
+    ]);
+
+    $session = UserSession::query()->create([
+        'id' => 'session-new-device-disabled',
+        'user_id' => 42,
+        'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
+        'payload' => 'test',
+        'last_activity' => now()->timestamp,
+    ]);
+
+    expect($session->is_new_device)->toBeFalse();
+});
+
+it('does not flag guest sessions as new devices', function () {
+    $session = UserSession::query()->create([
+        'id' => 'session-new-device-guest',
+        'user_id' => null,
+        'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
+        'payload' => 'test',
+        'last_activity' => now()->timestamp,
+    ]);
+
+    expect($session->is_new_device)->toBeFalse();
+});
+
+it('does not flag sessions as new devices when the user agent cannot be parsed', function () {
+    $session = UserSession::query()->create([
+        'id' => 'session-new-device-unparseable',
+        'user_id' => 42,
+        'user_agent' => 'test',
+        'payload' => 'test',
+        'last_activity' => now()->timestamp,
+    ]);
+
+    expect($session->is_new_device)->toBeFalse();
 });

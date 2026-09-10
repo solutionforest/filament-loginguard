@@ -48,6 +48,17 @@ it('records failed attempts', function () {
         ->and($row->isLocked())->toBeFalse();
 });
 
+it('truncates an over-long user agent', function () {
+    request()->headers->set('User-Agent', str_repeat('x', 300));
+
+    ($this->failed)();
+
+    expect(LoginAttempt::query()->sole()->user_agent)
+        ->toHaveLength(258)
+        ->toStartWith(str_repeat('x', 255))
+        ->toEndWith('...');
+});
+
 it('locks out when the max attempts are reached', function () {
     config()->set('filament-loginguard.lockout.max_attempts', 3);
 
