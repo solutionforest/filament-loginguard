@@ -2,21 +2,17 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
-## v0.4.0 - 2026-08-31
+## Unreleased
 
 ### Added
 
-- Livewire test helpers `assertLoginGuardAttempts`, `assertLoginGuardLocked`, and `assertLoginGuardNotLocked`, mixed into `Livewire\Features\SupportTesting\Testable` for asserting login-guard state in application tests.
+- IP address normalization: IPv4-mapped IPv6 addresses (`::ffff:1.2.3.4`) are reduced to their plain IPv4 form, and IPv6 addresses are canonicalized, so the same client always maps to the same lockout key regardless of protocol or textual representation.
 
 ### Changed
 
-- **Breaking:** the new-device notification (`sessions.new_device.notifications`) now emails the account owner instead of a static `mail.to` recipient list. The `sessions.new_device.notifications.mail.to` config key is removed; only `mail.queue` remains. Accounts without an email are skipped.
+- The minimum supported Filament version is now 5.7.6 (earlier 5.x releases have known security advisories).
 
-### Removed
-
-- **Breaking:** removed the unused `FilamentLoginGuard` class and the `FilamentLoginGuard` facade alias (skeleton stubs that exposed no API). Use the `LoginGuardService` (resolvable via the container) instead.
-
-## Unreleased
+## v0.4.0 - 2026-08-31
 
 ### Added
 
