@@ -14,3 +14,6 @@ workbench/storage
 
 /resources/dist/*
 !/resources/dist/.gitkeep
+
+/.opencode
+/opencode.json

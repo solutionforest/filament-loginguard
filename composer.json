@@ -1,13 +1,19 @@
 {
     "name": "solution-forest/filament-loginguard",
-    "description": "Brute force login protection for Filament, throttling and locking out malicious IPs and emails.",
+    "description": "Enterprise-grade login security for Filament: brute-force lockouts with escalation, self-service unlock, and active session management.",
     "keywords": [
         "SolutionForest",
         "laravel",
         "filamentphp",
         "filament",
         "filament-plugin",
-        "filament-loginguard"
+        "filament-loginguard",
+        "security",
+        "brute-force",
+        "lockout",
+        "rate-limiting",
+        "session-management",
+        "login-protection"
     ],
     "homepage": "https://github.com/solutionforest/filament-loginguard",
     "support": {
