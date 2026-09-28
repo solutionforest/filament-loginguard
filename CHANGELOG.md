@@ -2,6 +2,53 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
+## v0.5.0 — Security correctness release - 2026-09-28
+
+### v0.5.0 — Security correctness release
+
+This release fixes several security-logic and semantic issues found during a full audit, adds anti-DoS self-service unlock, and locks the Filament requirement to the advisory-free **5.7.6+**.
+
+#### Highlights
+
+##### 🔓 Self-service unlock (anti-DoS)
+
+Email lockouts can be abused as a DoS vector: an attacker can deliberately fail logins to lock a victim's email out. When `lockout.notifications.self_unlock.enabled => true`, the lockout email sent to the blocked address itself carries a signed, single-use **"Unlock my email"** link (confirmation page → POST → unlock). The escalation ladder and IP locks are never affected. Off by default.
+
+##### 🛡️ Security-logic fixes
+
+- **True fixed-window attempt counting** via the new `window_started_at` column: a slow drip with gaps shorter than `attempts_window_minutes` no longer accumulates forever.
+- **Atomic attempt counters**: failures are incremented in SQL, so concurrent logins can no longer lose updates.
+- **Escalation history survives cleanup**: lockouts are recorded in the new append-only `filament_loginguard_lockout_histories` table — the `cleanup-attempts` command can never reset the escalation ladder anymore.
+- **Self-unlock email goes to the blocked address**, independent of the admin recipient list — it works even with `notifications.mail.to => []`, and admins no longer hold the victim's unlock link.
+- **Session security decoupled from the admin page**: new `sessions.enabled` key gates new-device detection and concurrent-session limits; `pages.sessions.enabled` only hides the UI.
+- **Bulk revoke no longer kicks yourself**: the current session is excluded.
+- **Stats widget corrected**: windowed 24h failures, real successful-login counts, distinct locked (IP, email) pairs.
+- **Split page permissions**: `authorize_view` / `authorize_unblock` / `authorize_revoke` allow read-only reviewers and action-specific operators.
+
+##### Other
+
+- Trusted proxy support (`lockout.trusted_proxies`, IPs or CIDRs) with spoof-resistant `X-Forwarded-For` resolution.
+- IP normalization (IPv4-mapped IPv6 → IPv4, IPv6 canonicalization).
+- Composite indexes on the attempts table for fast aggregate queries.
+- Self-unlock URLs carry an opaque token — the email address never appears in URLs, proxy logs or mail-scanner trails.
+
+#### ⚠️ Breaking changes & upgrade guide
+
+After updating:
+
+```bash
+composer update solution-forest/filament-loginguard
+php artisan migrate                 # new column + lockout history table
+php artisan config:clear
+
+```
+1. **Self-unlock email recipient changed** — the unlock link is now emailed to the blocked address itself, not to `notifications.mail.to`. If you have custom code reading the notification's unlock URL, note the URL now contains an opaque token (`/filament-loginguard/unlock/{token}`), not the email.
+2. **Session security config key changed** — new-device detection and concurrent-session limits are now gated by `sessions.enabled` (new key, default `true`) instead of `pages.sessions.enabled`. If you previously disabled `pages.sessions.enabled` while relying on the security features, no action needed — they now stay on; set `sessions.enabled => false` to actually disable them.
+3. **Minimum Filament is now 5.7.6** — earlier 5.x releases have known security advisories.
+4. **New migrations** run automatically via `php artisan migrate` — the package reads `window_started_at` and the history table from now on.
+
+**Full changelog**: https://github.com/solutionforest/filament-loginguard/blob/main/CHANGELOG.md
+
 ## v0.5.0 - 2026-09-28
 
 ### Added
