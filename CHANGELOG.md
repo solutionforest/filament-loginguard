@@ -2,7 +2,7 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
-## Unreleased
+## v0.5.0 - 2026-09-28
 
 ### Added
 
