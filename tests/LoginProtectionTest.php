@@ -4,10 +4,12 @@ use Carbon\Carbon;
 use Illuminate\Auth\Events\Attempting;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Validation\ValidationException;
 use SolutionForest\FilamentLoginGuard\Events\LoginLockedOut;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
+use SolutionForest\FilamentLoginGuard\Models\LockoutHistory;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestUser;
 
@@ -233,6 +235,88 @@ it('decays attempts outside the window', function () {
     ($this->failed)();
 
     expect(LoginAttempt::query()->sole()->attempts)->toBe(1);
+});
+
+it('counts failures inside one fixed window, not across gap-less attempts', function () {
+    // The window is a true fixed window: only failures that actually happened
+    // inside the same window accumulate. A slow drip with 20-minute gaps (window
+    // = 30 min) used to accumulate forever because `last_attempt_at` never aged
+    // out; with `window_started_at` each window restarts at zero.
+    config()->set('filament-loginguard.lockout.max_attempts', 10);
+    config()->set('filament-loginguard.lockout.attempts_window_minutes', 30);
+
+    // 6 failures, one every 20 minutes: each 30-minute window only ever holds
+    // two of them, so the counter never climbs past 2 and no lockout happens.
+    foreach ([20, 20, 20, 20, 20] as $gap) {
+        ($this->failed)();
+        Carbon::setTestNow(now()->addMinutes($gap));
+    }
+    ($this->failed)();
+
+    expect(LoginAttempt::query()->sole()->attempts)->toBe(2)
+        ->and(app(LoginGuardService::class)->isLocked('1.2.3.4', 'a@example.com'))->toBeFalse();
+});
+
+it('never accumulates beyond one window even after dozens of spaced failures', function () {
+    // The old gap-reset semantics would reach max_attempts (10) after 10 slow
+    // drips; the fixed window caps the counter at whatever fits in one window.
+    config()->set('filament-loginguard.lockout.max_attempts', 10);
+    config()->set('filament-loginguard.lockout.attempts_window_minutes', 30);
+
+    for ($i = 0; $i < 12; $i++) {
+        ($this->failed)();
+        Carbon::setTestNow(now()->addMinutes(20));
+    }
+
+    expect((int) LoginAttempt::query()->sole()->attempts)->toBeLessThanOrEqual(2)
+        ->and(app(LoginGuardService::class)->isLocked('1.2.3.4', 'a@example.com'))->toBeFalse();
+});
+
+it('locks out inside a single window when enough failures accumulate there', function () {
+    config()->set('filament-loginguard.lockout.max_attempts', 5);
+    config()->set('filament-loginguard.lockout.attempts_window_minutes', 30);
+
+    // 5 failures inside one 10-minute span — all in the same window.
+    foreach ([1, 2, 3, 4] as $gap) {
+        ($this->failed)();
+        Carbon::setTestNow(now()->addMinutes($gap));
+    }
+    ($this->failed)();
+
+    expect(app(LoginGuardService::class)->isLocked('1.2.3.4', 'a@example.com'))->toBeTrue();
+});
+
+it('records an escalation history entry for every applied lockout', function () {
+    config()->set('filament-loginguard.lockout.max_attempts', 2);
+
+    ($this->failed)();
+    ($this->failed)();
+
+    $history = LockoutHistory::query()->sole();
+
+    expect($history->ip)->toBe('1.2.3.4')
+        ->and($history->email)->toBe('a@example.com')
+        ->and($history->lockout_count)->toBe(1)
+        ->and($history->duration_minutes)->toBe(15)
+        ->and($history->locked_until->equalTo(now()->addMinutes(15)))->toBeTrue();
+});
+
+it('increments the attempt counter atomically', function () {
+    config()->set('filament-loginguard.lockout.max_attempts', 5);
+
+    $row = LoginAttempt::query()->create([
+        'ip' => '1.2.3.4',
+        'email' => 'a@example.com',
+        'attempts' => 1,
+        'window_started_at' => now(),
+    ]);
+
+    // The atomic increment must be a SQL expression, not a read-modify-write:
+    // concurrent requests then never lose an update.
+    LoginAttempt::query()->whereKey($row->getKey())->update(['attempts' => DB::raw('attempts + 1')]);
+    LoginAttempt::query()->whereKey($row->getKey())->update(['attempts' => DB::raw('attempts + 1')]);
+
+    expect($row->refresh()->attempts)->toBe(3);
 });
 
 it('does not extend an active lock', function () {

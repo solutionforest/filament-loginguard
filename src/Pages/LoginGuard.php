@@ -14,8 +14,8 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\Auth;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Support\AuthorizesPages;
 use SolutionForest\FilamentLoginGuard\Widgets\LoginGuardStats;
 
 class LoginGuard extends Page implements HasTable
@@ -26,7 +26,7 @@ class LoginGuard extends Page implements HasTable
 
     /**
      * Filament v5 pages default to "any authenticated panel user"; gate the page
-     * behind the pages.attempts config and an optional ability.
+     * behind the pages.attempts config and an optional view ability.
      */
     public static function canAccess(): bool
     {
@@ -34,15 +34,7 @@ class LoginGuard extends Page implements HasTable
             return false;
         }
 
-        $ability = config('filament-loginguard.pages.attempts.authorize');
-
-        if (blank($ability)) {
-            return true;
-        }
-
-        $user = Auth::user();
-
-        return $user !== null && method_exists($user, 'can') && (bool) $user->can($ability);
+        return AuthorizesPages::canViewAttempts();
     }
 
     public static function shouldRegisterNavigation(): bool
@@ -185,7 +177,8 @@ class LoginGuard extends Page implements HasTable
                     ->icon('heroicon-o-lock-open')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn (LoginAttempt $record): bool => $record->isLocked())
+                    ->visible(fn (LoginAttempt $record): bool => $record->isLocked()
+                        && AuthorizesPages::canUnblockAttempts())
                     ->action(function (LoginAttempt $record): void {
                         $record->unlock();
 
@@ -201,6 +194,7 @@ class LoginGuard extends Page implements HasTable
                     ->icon('heroicon-o-lock-open')
                     ->color('success')
                     ->requiresConfirmation()
+                    ->visible(fn (): bool => AuthorizesPages::canUnblockAttempts())
                     ->action(function (Collection $records): Collection {
                         $records->each(fn (LoginAttempt $record) => $record->unlock());
 

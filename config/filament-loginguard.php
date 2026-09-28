@@ -86,6 +86,11 @@ return [
     // `session.lifetime`; sweep expired rows with the
     // `filament-loginguard:cleanup-sessions` command.
     'sessions' => [
+        // Master switch for the session security features (new-device detection,
+        // new-device notifications and the concurrent-session limit). This is
+        // independent of the admin page: disable the page alone via
+        // `pages.sessions.enabled` if you only want to hide the UI.
+        'enabled' => true,
         'table' => 'sessions',
         // A session whose last_activity is within this many seconds is "online".
         'online_threshold_seconds' => 60,
@@ -151,10 +156,12 @@ return [
             'navigation_icon' => 'heroicon-o-shield-exclamation',
             'navigation_group' => null,
             'navigation_sort' => null,
-            // Optional ability name (string) that the logged-in user must pass via `$user->can(...)`
-            // to view the page. null = any authenticated panel user. Fail-closed when the ability
-            // is not registered anywhere.
+            // Optional ability names checked via $user->can(...). `authorize` gates
+            // everything; the finer-grained keys split view vs. action permissions
+            // and win when set. Fail-closed when an ability is not registered.
             'authorize' => null,
+            'authorize_view' => null,      // viewing the attempts page
+            'authorize_unblock' => null,   // unblock / bulk-unblock actions
             // Show the failed-attempts / lockout stats widget at the top of the page.
             'stats_widget' => true,
         ],
@@ -167,8 +174,10 @@ return [
             'navigation_icon' => 'heroicon-o-computer-desktop',
             'navigation_group' => null,
             'navigation_sort' => null,
-            // Same authorize semantics as pages.attempts.authorize.
+            // Same semantics as pages.attempts.authorize.
             'authorize' => null,
+            'authorize_view' => null,      // viewing the sessions page
+            'authorize_revoke' => null,    // revoke / bulk-revoke actions
         ],
     ],
 ];

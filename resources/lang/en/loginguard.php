@@ -86,5 +86,8 @@ return [
         'invalid_title' => 'Invalid link',
         'invalid' => 'This unlock link is invalid or has expired.',
         'no_locks' => 'There is no active lock on this email.',
+        'confirm_title' => 'Unlock your email',
+        'confirm_intro' => 'This link was emailed to you because your address was locked out after too many failed login attempts. Unlocking clears the block so you can log in again.',
+        'confirm_action' => 'Unlock my email',
     ],
 ];

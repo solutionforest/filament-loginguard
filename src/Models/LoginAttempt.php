@@ -19,6 +19,7 @@ use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
  * @property Carbon|null $locked_until
  * @property Carbon|null $last_attempt_at
  * @property Carbon|null $last_success_at
+ * @property Carbon|null $window_started_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read string|null $device_name
@@ -41,6 +42,7 @@ class LoginAttempt extends Model
             'locked_until' => 'datetime',
             'last_attempt_at' => 'datetime',
             'last_success_at' => 'datetime',
+            'window_started_at' => 'datetime',
         ];
     }
 

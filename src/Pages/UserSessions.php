@@ -12,9 +12,9 @@ use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use SolutionForest\FilamentLoginGuard\Models\UserSession;
+use SolutionForest\FilamentLoginGuard\Support\AuthorizesPages;
 
 class UserSessions extends Page implements HasTable
 {
@@ -28,15 +28,7 @@ class UserSessions extends Page implements HasTable
             return false;
         }
 
-        $ability = config('filament-loginguard.pages.sessions.authorize');
-
-        if (blank($ability)) {
-            return true;
-        }
-
-        $user = Auth::user();
-
-        return $user !== null && method_exists($user, 'can') && (bool) $user->can($ability);
+        return AuthorizesPages::canViewSessions();
     }
 
     public static function shouldRegisterNavigation(): bool
@@ -129,7 +121,8 @@ class UserSessions extends Page implements HasTable
                     ->icon('heroicon-o-x-mark')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->visible(fn (UserSession $record): bool => $record->id !== session()->getId())
+                    ->visible(fn (UserSession $record): bool => $record->id !== session()->getId()
+                        && AuthorizesPages::canRevokeSessions())
                     ->action(function (UserSession $record): void {
                         $record->delete();
 
@@ -145,8 +138,13 @@ class UserSessions extends Page implements HasTable
                     ->icon('heroicon-o-x-mark')
                     ->color('danger')
                     ->requiresConfirmation()
+                    ->visible(fn (): bool => AuthorizesPages::canRevokeSessions())
                     ->action(function (Collection $records): void {
-                        $records->each(fn (UserSession $record) => $record->delete());
+                        // Never revoke the session performing the request — the
+                        // admin would log themselves out mid-action.
+                        $records
+                            ->reject(fn (UserSession $record): bool => $record->id === session()->getId())
+                            ->each(fn (UserSession $record) => $record->delete());
                     }),
             ]);
     }

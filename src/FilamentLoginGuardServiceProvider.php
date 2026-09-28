@@ -55,13 +55,17 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
-        // Self-service unlock route (signed, single-use link from the lockout email).
-        $this->app->make('router')
-            ->get('filament-loginguard/unlock/{email}', [
-                SelfUnlockController::class,
-                '__invoke',
-            ])
-            ->name('filament-loginguard.unlock')
+        // Self-service unlock routes (signed, single-use link from the lockout
+        // email): GET shows a confirmation page, POST performs the unlock.
+        $router = $this->app->make('router');
+        $controller = SelfUnlockController::class;
+
+        $router->get('filament-loginguard/unlock/{token}', [$controller, 'show'])
+            ->name('filament-loginguard.unlock.show')
+            ->middleware('web');
+
+        $router->post('filament-loginguard/unlock/{token}', [$controller, 'unlock'])
+            ->name('filament-loginguard.unlock.confirm')
             ->middleware('web');
 
         // Asset Registration
@@ -183,7 +187,9 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
             'update_filament_loginguard_attempts_table_add_user_agent',
             'update_filament_loginguard_attempts_table_add_success',
             'update_filament_loginguard_attempts_table_add_composite_indexes',
+            'update_filament_loginguard_attempts_table_add_window_started_at',
             'create_filament_loginguard_known_devices_table',
+            'create_filament_loginguard_lockout_histories_table',
         ];
     }
 }

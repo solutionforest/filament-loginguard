@@ -80,8 +80,11 @@ class AuthenticationListener
      */
     public function handleLogin(Login $event): void
     {
+        // Session security features (new-device tracking, concurrent limit) are
+        // gated by `sessions.enabled`, NOT by the admin page toggle — hiding the
+        // page must not silently disable the security behavior.
         $guardTracked = $this->service->isEnabled() && $this->shouldTrackGuard($event->guard);
-        $sessionsEnabled = (bool) config('filament-loginguard.pages.sessions.enabled', true);
+        $sessionsEnabled = (bool) config('filament-loginguard.sessions.enabled', true);
 
         if (! $guardTracked && ! $sessionsEnabled) {
             return;

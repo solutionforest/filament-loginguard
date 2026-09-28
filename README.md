@@ -153,8 +153,8 @@ Lockout semantics:
 
 - Rows are stored per **(IP, email) pair** in the `filament_loginguard_attempts` table.
 - With `tracking.per_ip` enabled, the **sum** of attempts across all emails from one IP triggers a lockout of that IP — rotating emails doesn't help attackers. `tracking.per_email` does the same across IPs for one email.
-- Lock durations **escalate**: the first lockout lasts `lockout.initial_minutes`; the 2nd, 3rd and subsequent lockouts use `lockout.escalation_hours` (e.g. `[24, 72, 168]` = 1 day, 3 days, 7 days+). The last value repeats for every further lockout.
-- Attempts **decay**: failures older than `lockout.attempts_window_minutes` no longer count, and the counter restarts.
+- Lock durations **escalate**: the first lockout lasts `lockout.initial_minutes`; the 2nd, 3rd and subsequent lockouts use `lockout.escalation_hours` (e.g. `[24, 72, 168]` = 1 day, 3 days, 7 days+). The last value repeats for every further lockout. Escalation history is stored in its own append-only table, so cleaning up old attempt rows never resets the ladder.
+- Attempts are counted in a **fixed window**: failures only accumulate while they fall inside the same `attempts_window_minutes` window; the first failure after the window expires restarts the counter at zero. A slow drip just under the window length never reaches the threshold.
 - A lock is **never extended** by further attempts while it is active; a successful login resets everything (forgiving legitimate owners).
 - The lockout message is rendered in the Filament login form (`data.email` error key) and as a standard `email` validation error in non-Filament forms (redirect back for web requests, 422 for JSON).
 - Localhost (`127.0.0.1`, `::1`) is whitelisted by default.
@@ -164,7 +164,7 @@ Lockout semantics:
 > [!WARNING]
 > **Email lockouts can be abused as a denial-of-service vector.** An attacker who knows (or guesses) an account's email can deliberately fail logins to lock that email out — the legitimate owner is then blocked too. Mitigations:
 >
-> - Enable **self-service unlock** (`lockout.notifications.self_unlock.enabled`): the lockout email sent to the blocked address carries a signed, single-use "unlock now" link, so the real owner can clear the lock immediately. Attempt counters are kept, so repeated lockouts still escalate. IP locks are never lifted this way.
+> - Enable **self-service unlock** (`lockout.notifications.self_unlock.enabled`): the lockout email sent to the blocked address carries a signed, single-use "unlock now" link (a confirmation page, then the unlock — the URL contains only an opaque token, never the email). The real owner can clear the lock immediately. Attempt counters are kept, so repeated lockouts still escalate. IP locks are never lifted this way.
 > - Whitelist critical accounts via `lockout.whitelist.emails` so they can always log in.
 > - Keep `lockout.initial_minutes` moderate and review the `escalation_hours` ladder.
 > - If you run behind a proxy/CDN, configure `lockout.trusted_proxies` (below) so lockouts key on the *real* client IP — otherwise all traffic appears to come from the proxy IP and a single attacker can lock out everyone.
@@ -222,6 +222,7 @@ return [
 
     // Active user sessions (requires SESSION_DRIVER=database).
     'sessions' => [
+        'enabled' => true,                 // master switch for session security features
         'table' => 'sessions',
         'online_threshold_seconds' => 60,  // "online now" cutoff
         'user_model' => null,              // null = auth.providers.users.model
@@ -261,12 +262,14 @@ return [
             'navigation_icon' => 'heroicon-o-shield-exclamation',
             'navigation_group' => null,
             'navigation_sort' => null,
-            'authorize' => null,           // ability name checked via $user->can(); null = any authenticated panel user
+            'authorize' => null,           // gates everything; the finer keys below win when set
+            'authorize_view' => null,      // viewing the page
+            'authorize_unblock' => null,   // unblock / bulk-unblock actions
             'stats_widget' => true,        // show the failed-attempts / lockout stats widget
         ],
 
         'sessions' => [
-            'enabled' => true,
+            'enabled' => true,             // admin page only; session security uses sessions.enabled
             'slug' => 'user-sessions',
             'cluster' => null,
             'navigation_label' => null,
@@ -274,13 +277,15 @@ return [
             'navigation_group' => null,
             'navigation_sort' => null,
             'authorize' => null,
+            'authorize_view' => null,      // viewing the page
+            'authorize_revoke' => null,    // revoke / bulk-revoke actions
         ],
     ],
 ];
 ```
 
 > [!WARNING]
-> Both admin pages are visible to **any authenticated panel user** by default. Restrict them with the `authorize` option, which accepts a permission/ability name checked via `$user->can(...)`.
+> Both admin pages are visible to **any authenticated panel user** by default. Restrict them with the `authorize` option, which accepts a permission/ability name checked via `$user->can(...)`. For finer control, use the split keys: `authorize_view` gates viewing the page and `authorize_unblock` / `authorize_revoke` gate the security actions — e.g. grant reviewers view-only access and let operators perform unblocks/revokes.
 >
 > **With `spatie/laravel-permission`** (e.g. when using Filament Shield), the string is a permission name — just create the permission and assign it to a role; no Gate is required:
 >

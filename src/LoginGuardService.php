@@ -5,10 +5,12 @@ namespace SolutionForest\FilamentLoginGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use SolutionForest\FilamentLoginGuard\Models\KnownDevice;
+use SolutionForest\FilamentLoginGuard\Models\LockoutHistory;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Models\UserSession;
 use SolutionForest\FilamentLoginGuard\Notifications\AccountLockedNotification;
@@ -69,39 +71,61 @@ final class LoginGuardService
     /**
      * Record one failed attempt. Returns a LockoutResult describing whether THIS attempt
      * triggered a lockout (so the listener can throw + notify).
+     *
+     * The counter is a fixed window: all attempts with `window_started_at` inside
+     * `attempts_window_minutes` accumulate; the first failure after the window
+     * expired resets the counter and starts a new window. This matches the README
+     * semantics — a slow drip with gaps shorter than the window cannot accumulate
+     * forever, because each window only counts failures that actually happened
+     * inside it.
+     *
+     * The counter is incremented atomically in SQL so concurrent failures never
+     * lose updates.
      */
     public function recordFailure(string $ip, string $email, ?string $userAgent = null): LockoutResult
     {
         $now = Carbon::now();
         $maxAttempts = (int) config('filament-loginguard.lockout.max_attempts', 10);
         $windowMinutes = (int) config('filament-loginguard.lockout.attempts_window_minutes', 30);
+        $windowSeconds = max(1, $windowMinutes) * 60;
         $trackIp = (bool) config('filament-loginguard.lockout.tracking.per_ip', true);
         $trackEmail = (bool) config('filament-loginguard.lockout.tracking.per_email', true);
 
         /** @var LoginAttempt $row */
         $row = LoginAttempt::query()->firstOrCreate(['ip' => $ip, 'email' => $email]);
 
-        // Attempt decay: a stale row starts counting from zero again (lockout_count is kept:
-        // escalation history is permanent until a success/unblock resets it).
-        if ($row->last_attempt_at !== null && $row->last_attempt_at->lt($now->copy()->subMinutes($windowMinutes))) {
-            $row->attempts = 0;
+        // Fixed window: if the current window expired, restart it from zero. The
+        // atomic UPDATE below then bumps the (possibly reset) counter by one.
+        $windowExpired = $row->window_started_at === null
+            || $row->window_started_at->lt($now->copy()->subSeconds($windowSeconds));
+
+        if ($windowExpired) {
+            LoginAttempt::query()
+                ->whereKey($row->getKey())
+                ->update(['attempts' => 0, 'window_started_at' => $now]);
         }
 
-        $row->attempts += 1;
-        $row->last_attempt_at = $now;
-        $row->user_agent = $userAgent === null ? null : Str::limit($userAgent, 255);
-        $row->save();
+        $updatedRows = LoginAttempt::query()
+            ->whereKey($row->getKey())
+            ->update([
+                'attempts' => DB::raw('attempts + 1'),
+                'last_attempt_at' => $now,
+                'user_agent' => $userAgent === null ? null : Str::limit($userAgent, 255),
+            ]);
 
-        $cutoff = $now->copy()->subMinutes($windowMinutes);
+        $row = LoginAttempt::query()->findOrFail($row->getKey());
+        $attempts = $updatedRows > 0 ? (int) $row->attempts : 1;
+
+        $cutoff = $now->copy()->subSeconds($windowSeconds);
 
         // Aggregate sums count attempts of all rows of the same IP (or same email)
-        // that are still inside the window.
+        // whose window is still active.
         $lockIds = [];
 
         if ($trackIp) {
             $ipAttempts = (int) LoginAttempt::query()
                 ->where('ip', $ip)
-                ->where('last_attempt_at', '>=', $cutoff)
+                ->where('window_started_at', '>=', $cutoff)
                 ->sum('attempts');
 
             if ($ipAttempts >= $maxAttempts) {
@@ -112,7 +136,7 @@ final class LoginGuardService
         if ($trackEmail) {
             $emailAttempts = (int) LoginAttempt::query()
                 ->where('email', $email)
-                ->where('last_attempt_at', '>=', $cutoff)
+                ->where('window_started_at', '>=', $cutoff)
                 ->sum('attempts');
 
             if ($emailAttempts >= $maxAttempts) {
@@ -120,7 +144,7 @@ final class LoginGuardService
             }
         }
 
-        if (! $trackIp && ! $trackEmail && $row->attempts >= $maxAttempts) {
+        if (! $trackIp && ! $trackEmail && $attempts >= $maxAttempts) {
             $lockIds[] = $row->getKey();
         }
 
@@ -131,12 +155,20 @@ final class LoginGuardService
         // Apply the lock with escalation. Never shorten an existing lock; only bump
         // lockout_count when the lock is actually (re)applied with a longer duration.
         $locked = false;
+        $lockoutRecords = [];
 
         LoginAttempt::query()
             ->whereKey(array_unique($lockIds))
             ->get()
-            ->each(function (LoginAttempt $target) use ($now, &$locked): void {
-                $newCount = $target->lockout_count + 1;
+            ->each(function (LoginAttempt $target) use ($now, &$locked, &$lockoutRecords, $ip, $email): void {
+                // The escalation position is derived from the append-only history
+                // table, not from the (deletable) attempt row's counter — the
+                // cleanup command must never be able to reset the ladder.
+                $newCount = LockoutHistory::query()
+                    ->where('ip', $target->ip)
+                    ->where('email', $target->email)
+                    ->count() + 1;
+
                 $lockedUntil = $now->copy()->addMinutes($this->durationForLockoutCount($newCount));
 
                 if ($target->locked_until !== null && $target->locked_until->gte($lockedUntil)) {
@@ -147,8 +179,28 @@ final class LoginGuardService
                 $target->locked_until = $lockedUntil;
                 $target->save();
 
+                $lockoutRecords[] = [
+                    'ip' => $target->ip,
+                    'email' => $target->email,
+                    'locked_at' => $now,
+                    'locked_until' => $lockedUntil,
+                    'lockout_count' => $newCount,
+                    'duration_minutes' => $this->durationForLockoutCount($newCount),
+                    'triggered_by_ip' => $ip,
+                    'triggered_by_email' => $email,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+
                 $locked = true;
             });
+
+        if ($lockoutRecords !== []) {
+            // Escalation history lives in its own append-only table so the
+            // attempts cleanup command can delete stale rows without ever
+            // resetting the escalation ladder.
+            LockoutHistory::query()->insert($lockoutRecords);
+        }
 
         if (! $locked) {
             return new LockoutResult(locked: false);
@@ -322,8 +374,9 @@ final class LoginGuardService
     /**
      * Send the admin notification, throttled per-IP via the cache. Returns whether it was sent.
      *
-     * When self-service unlock is enabled, the notification carries a signed,
-     * single-use unlock link addressed to the blocked email itself.
+     * Independent of the admin mail, a self-service unlock email is delivered to
+     * the blocked address itself when `self_unlock.enabled` — so mailbox owners
+     * can recover from a lockout even when no admin recipients are configured.
      */
     public function notifyLockout(string $ip, string $email, int $minutes): bool
     {
@@ -331,6 +384,18 @@ final class LoginGuardService
             return false;
         }
 
+        $sent = $this->notifyAdmins($ip, $email, $minutes);
+
+        $this->sendSelfUnlockEmail($ip, $email, $minutes);
+
+        return $sent;
+    }
+
+    /**
+     * Email the admins listed in `notifications.mail.to`, throttled per IP.
+     */
+    private function notifyAdmins(string $ip, string $email, int $minutes): bool
+    {
         $recipients = (array) config('filament-loginguard.lockout.notifications.mail.to', []);
 
         if ($recipients === []) {
@@ -346,12 +411,7 @@ final class LoginGuardService
 
         cache()->put($cacheKey, true, $cooldownMinutes * 60);
 
-        $notification = new AccountLockedNotification(
-            ip: $ip,
-            email: $email,
-            minutes: $minutes,
-            unlockUrl: $this->selfUnlockUrl($email),
-        );
+        $notification = new AccountLockedNotification(ip: $ip, email: $email, minutes: $minutes);
 
         $queue = config('filament-loginguard.lockout.notifications.mail.queue', false);
 
@@ -369,9 +429,42 @@ final class LoginGuardService
     }
 
     /**
+     * Email the self-service unlock link to the blocked address itself.
+     * Never throttled and independent of the admin recipients: this is the
+     * lockout victim's recovery path.
+     */
+    private function sendSelfUnlockEmail(string $ip, string $email, int $minutes): void
+    {
+        $url = $this->selfUnlockUrl($email);
+
+        if ($url === null) {
+            return;
+        }
+
+        $notification = new AccountLockedNotification(
+            ip: $ip,
+            email: $email,
+            minutes: $minutes,
+            unlockUrl: $url,
+        );
+
+        $queue = config('filament-loginguard.lockout.notifications.self_unlock.queue', false);
+
+        $notifiable = Notification::route('mail', $email);
+
+        if ($queue !== false) {
+            $notifiable->notify($notification->onQueue((string) $queue));
+        } else {
+            $notifiable->notifyNow($notification);
+        }
+    }
+
+    /**
      * Signed, single-use URL that clears the email lock, or null when self-unlock
-     * is disabled. The URL is emailed to the blocked address itself, so only the
-     * mailbox owner can act on it.
+     * is disabled. The URL carries an opaque random token — the blocked address
+     * is never exposed in the path or query string (it stays out of proxy logs,
+     * browser history and mail-scanner trails). The email itself is emailed to
+     * the blocked address, so only the mailbox owner can act on the link.
      */
     public function selfUnlockUrl(string $email): ?string
     {
@@ -380,17 +473,44 @@ final class LoginGuardService
         }
 
         $ttlMinutes = max(1, (int) config('filament-loginguard.lockout.notifications.self_unlock.link_ttl_minutes', 60));
+        $token = Str::random(40);
+
+        // The opaque token maps back to the locked email inside the TTL window.
+        cache()->put($this->unlockTokenKey($token), $email, $ttlMinutes * 60);
 
         try {
             return URL::temporarySignedRoute(
-                'filament-loginguard.unlock',
+                'filament-loginguard.unlock.show',
                 now()->addMinutes($ttlMinutes),
-                ['email' => $email],
+                ['token' => $token],
             );
         } catch (\Throwable) {
             // Route not registered (e.g. tests without the package routes).
+            cache()->forget($this->unlockTokenKey($token));
+
             return null;
         }
+    }
+
+    /**
+     * Resolve an opaque unlock token back to its email, or null when the token
+     * is unknown/expired.
+     */
+    public function emailForUnlockToken(string $token): ?string
+    {
+        $email = cache()->get($this->unlockTokenKey($token));
+
+        return is_string($email) && filled($email) ? $email : null;
+    }
+
+    public function forgetUnlockToken(string $token): void
+    {
+        cache()->forget($this->unlockTokenKey($token));
+    }
+
+    public function selfUnlockTtlSeconds(): int
+    {
+        return max(1, (int) config('filament-loginguard.lockout.notifications.self_unlock.link_ttl_minutes', 60)) * 60;
     }
 
     /**
@@ -432,7 +552,7 @@ final class LoginGuardService
 
     private function unlockTokenKey(string $signature): string
     {
-        return 'filament-loginguard:unlock-used:' . sha1($signature);
+        return 'filament-loginguard:unlock:' . sha1($signature);
     }
 
     /**
