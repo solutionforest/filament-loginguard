@@ -73,6 +73,9 @@ it('does not track session security when sessions.enabled is false', function ()
 
 it('excludes the current session from the bulk revoke', function () {
     config()->set('filament-loginguard.pages.sessions.enabled', true);
+    // The cookie session driver cannot look up rows by id; use the database
+    // driver so the sessions table is authoritative.
+    config()->set('session.driver', 'database');
 
     // Laravel only accepts 40-char alnum session ids; use a valid one so the
     // store keeps it instead of silently regenerating.

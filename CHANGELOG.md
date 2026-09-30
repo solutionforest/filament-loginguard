@@ -2,52 +2,11 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
-## v0.5.0 — Security correctness release - 2026-09-28
+## Unreleased
 
-### v0.5.0 — Security correctness release
+### Added
 
-This release fixes several security-logic and semantic issues found during a full audit, adds anti-DoS self-service unlock, and locks the Filament requirement to the advisory-free **5.7.6+**.
-
-#### Highlights
-
-##### 🔓 Self-service unlock (anti-DoS)
-
-Email lockouts can be abused as a DoS vector: an attacker can deliberately fail logins to lock a victim's email out. When `lockout.notifications.self_unlock.enabled => true`, the lockout email sent to the blocked address itself carries a signed, single-use **"Unlock my email"** link (confirmation page → POST → unlock). The escalation ladder and IP locks are never affected. Off by default.
-
-##### 🛡️ Security-logic fixes
-
-- **True fixed-window attempt counting** via the new `window_started_at` column: a slow drip with gaps shorter than `attempts_window_minutes` no longer accumulates forever.
-- **Atomic attempt counters**: failures are incremented in SQL, so concurrent logins can no longer lose updates.
-- **Escalation history survives cleanup**: lockouts are recorded in the new append-only `filament_loginguard_lockout_histories` table — the `cleanup-attempts` command can never reset the escalation ladder anymore.
-- **Self-unlock email goes to the blocked address**, independent of the admin recipient list — it works even with `notifications.mail.to => []`, and admins no longer hold the victim's unlock link.
-- **Session security decoupled from the admin page**: new `sessions.enabled` key gates new-device detection and concurrent-session limits; `pages.sessions.enabled` only hides the UI.
-- **Bulk revoke no longer kicks yourself**: the current session is excluded.
-- **Stats widget corrected**: windowed 24h failures, real successful-login counts, distinct locked (IP, email) pairs.
-- **Split page permissions**: `authorize_view` / `authorize_unblock` / `authorize_revoke` allow read-only reviewers and action-specific operators.
-
-##### Other
-
-- Trusted proxy support (`lockout.trusted_proxies`, IPs or CIDRs) with spoof-resistant `X-Forwarded-For` resolution.
-- IP normalization (IPv4-mapped IPv6 → IPv4, IPv6 canonicalization).
-- Composite indexes on the attempts table for fast aggregate queries.
-- Self-unlock URLs carry an opaque token — the email address never appears in URLs, proxy logs or mail-scanner trails.
-
-#### ⚠️ Breaking changes & upgrade guide
-
-After updating:
-
-```bash
-composer update solution-forest/filament-loginguard
-php artisan migrate                 # new column + lockout history table
-php artisan config:clear
-
-```
-1. **Self-unlock email recipient changed** — the unlock link is now emailed to the blocked address itself, not to `notifications.mail.to`. If you have custom code reading the notification's unlock URL, note the URL now contains an opaque token (`/filament-loginguard/unlock/{token}`), not the email.
-2. **Session security config key changed** — new-device detection and concurrent-session limits are now gated by `sessions.enabled` (new key, default `true`) instead of `pages.sessions.enabled`. If you previously disabled `pages.sessions.enabled` while relying on the security features, no action needed — they now stay on; set `sessions.enabled => false` to actually disable them.
-3. **Minimum Filament is now 5.7.6** — earlier 5.x releases have known security advisories.
-4. **New migrations** run automatically via `php artisan migrate` — the package reads `window_started_at` and the history table from now on.
-
-**Full changelog**: https://github.com/solutionforest/filament-loginguard/blob/main/CHANGELOG.md
+- Charts widget on the Login Attempts page: a daily failed-attempts trend (7/30-day filter) and Top-10 leaderboards for attacked emails and source IPs, all based on the windowed attempt counts. Toggled with the existing `pages.attempts.stats_widget` option.
 
 ## v0.5.0 - 2026-09-28
 
@@ -62,7 +21,7 @@ php artisan config:clear
 
 ### Changed
 
-- The minimum supported Filament version is now 5.7.6 (earlier 5.x releases have known security advisories).
+- **Breaking:** the minimum supported Filament version is now 5.7.6 (earlier 5.x releases have known security advisories).
 - Clarified the README install instructions: `filament-loginguard:install` publishes the config file only; migrations run automatically and `php artisan migrate` applies them.
 - **Breaking:** the self-unlock email is now sent to the blocked address itself, independent of `lockout.notifications.mail.to` — admins no longer receive (and can no longer act on) the victim's unlock link, and self-unlock works even with no admin recipients configured.
 - **Breaking:** the self-unlock link now shows a confirmation page (GET) and performs the unlock on POST; the URL carries an opaque random token instead of the email address, so the address never appears in proxy logs, browser history or mail-scanner trails.
@@ -84,73 +43,3 @@ php artisan config:clear
 ### Removed
 
 - **Breaking:** removed the unused `FilamentLoginGuard` class and the `FilamentLoginGuard` facade alias (skeleton stubs that exposed no API). Use the `LoginGuardService` (resolvable via the container) instead.
-
-## v0.3.0 - 2026-08-26
-
-### Added
-
-- Opt-in auto-scheduling via `maintenance.cleanup_attempts` / `maintenance.cleanup_sessions`. When `enabled`, the package registers the corresponding cleanup command with Laravel's scheduler using the configured `expression` cron value (`cleanup-sessions` only when `SESSION_DRIVER=database`).
-
-### Changed
-
-- **Breaking:** renamed `filament-loginguard:cleanup` to `filament-loginguard:cleanup-attempts` for clarity (the command only clears attempt records). Update any scheduled tasks or scripts that reference the old name.
-
-### Fixed
-
-- Removed `publishMigrations()` / `askToRunMigrations()` from the install command. Migrations auto-run, so the publish workflow produced duplicate migrations (e.g. a `create_filament_loginguard_attempts_table` conflict) for apps that had already published them. Existing apps with a stale published `filament-loginguard` migration should delete it before running `migrate`.
-
-## v0.2.0 - 2026-08-25
-
-### Added
-
-- User Sessions page (requires `SESSION_DRIVER=database`): lists active sessions with a human-readable "last active" state and a one-click Revoke.
-- `filament-loginguard:cleanup-sessions` command to sweep expired session rows (Laravel's session GC is probabilistic and can leave stale rows behind).
-- `LoginLockedOut` event, dispatched on every lockout, for custom alerting (Slack, webhooks, etc.).
-- Stats overview widget on the attempts page: failed attempts (24h), currently locked out, successful logins (24h). Toggle via `pages.attempts.stats_widget`.
-- Success tracking on attempt rows (`success_count`, `last_success_at`).
-- New-device detection via a browser+platform fingerprint; flags sessions as "New" within a configurable window, with an optional first-sighting notification (`sessions.new_device.*`).
-- Per-user concurrent session limit enforcement, evicting the oldest sessions (`sessions.concurrent_limit`).
-- Package migrations now run automatically; no need to publish and run them manually.
-
-### Changed
-
-- **Breaking:** restructured the config file into three top-level groups — `lockout` (brute-force protection), `sessions` (session tracking behavior), `pages` (admin page wiring for both features):
-  
-  - Flat top-level keys (`enabled`, `max_attempts`, `lockout_minutes`, `ban_hours`, `attempts_window_minutes`, `tracking.*`, `whitelisted_ips`, `whitelisted_emails`, `notifications.*`) moved under `lockout.*`.
-  - `lockout_minutes` → `lockout.initial_minutes`; `ban_hours` → `lockout.escalation_hours`.
-  - `whitelisted_ips` / `whitelisted_emails` → `lockout.whitelist.ips` / `lockout.whitelist.emails`.
-  - `admin_page.*` → `pages.attempts.*`; the new sessions page config lives at `pages.sessions.*`.
-  - `sessions.new_device.notification.*` → `sessions.new_device.notifications.*`, with `to`/`queue` nested under `.mail`.
-  - Republish the config file (`php artisan vendor:publish --tag="filament-loginguard-config" --force`) and update any customized values to the new key paths.
-  
-- "Locked until" and "Last attempt" columns now render as relative, badge-styled times (e.g. "15 minutes", "15 minutes ago") instead of absolute datetimes, with the exact datetime available on hover.
-  
-- The "online now" threshold is now `sessions.online_threshold_seconds` (default 60s), narrowed from 5 minutes, so only genuinely-active sessions show "Online now".
-  
-- Empty "Successful" and "New device" table cells render a "-" placeholder instead of a 0 badge or blank cell.
-  
-
-### Fixed
-
-- `LoginLockedOut` dispatch on Laravel 11 (named arguments aren't supported there).
-
-## v0.1.0 - 2026-08-25
-
-### Added
-
-- Track user agents and show a human-readable "Device" column (e.g. "Chrome on macOS") in the login attempts table.
-
-### Changed
-
-- Renamed the browser column to "Device".
-- Hide the "Lockouts" column by default.
-- Only offer "Unblock" on records that are actually locked.
-- Removed the delete actions from the attempts table.
-
-### Fixed
-
-- A successful login no longer resets the failed-attempt counters of other accounts sharing the same IP.
-
-## v0.0.1 - 2026-08-21
-
-- Initial release

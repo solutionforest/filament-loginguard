@@ -78,6 +78,24 @@ return [
         'last_24h' => 'Last 24 hours',
         'active_lockouts' => 'Active lockouts',
     ],
+    'charts' => [
+        'failure_trend' => [
+            'heading' => 'Failed attempts trend',
+            'dataset' => 'Failed attempts',
+        ],
+        'top_emails' => [
+            'heading' => 'Top attacked emails (24h)',
+            'dataset' => 'Failed attempts',
+        ],
+        'top_ips' => [
+            'heading' => 'Top source IPs (24h)',
+            'dataset' => 'Failed attempts',
+        ],
+        'filters' => [
+            'last_7_days' => 'Last 7 days',
+            'last_30_days' => 'Last 30 days',
+        ],
+    ],
     'self_unlock' => [
         'title' => 'Email unlocked',
         'success' => 'Your email has been unlocked. You can try logging in again.',

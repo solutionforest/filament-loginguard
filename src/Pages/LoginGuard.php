@@ -16,7 +16,10 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Support\AuthorizesPages;
+use SolutionForest\FilamentLoginGuard\Widgets\FailureTrendChart;
 use SolutionForest\FilamentLoginGuard\Widgets\LoginGuardStats;
+use SolutionForest\FilamentLoginGuard\Widgets\TopAttackedEmailsChart;
+use SolutionForest\FilamentLoginGuard\Widgets\TopSourceIpsChart;
 
 class LoginGuard extends Page implements HasTable
 {
@@ -101,6 +104,9 @@ class LoginGuard extends Page implements HasTable
 
         return [
             LoginGuardStats::class,
+            FailureTrendChart::class,
+            TopAttackedEmailsChart::class,
+            TopSourceIpsChart::class,
         ];
     }
 
