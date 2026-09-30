@@ -164,6 +164,10 @@ return [
             'authorize_unblock' => null,   // unblock / bulk-unblock actions
             // Show the failed-attempts / lockout stats widget at the top of the page.
             'stats_widget' => true,
+            // Show the charts (failure trend, top attacked emails, top source IPs).
+            'charts' => true,
+            // Allow exporting the attempts table as CSV from the admin page.
+            'export' => true,
         ],
 
         'sessions' => [
@@ -178,6 +182,8 @@ return [
             'authorize' => null,
             'authorize_view' => null,      // viewing the sessions page
             'authorize_revoke' => null,    // revoke / bulk-revoke actions
+            // Allow exporting the sessions table as CSV from the admin page.
+            'export' => true,
         ],
     ],
 ];

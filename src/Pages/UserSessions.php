@@ -3,7 +3,9 @@
 namespace SolutionForest\FilamentLoginGuard\Pages;
 
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkAction;
+use Filament\Actions\ExportAction;
 use Filament\Clusters\Cluster;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -13,6 +15,7 @@ use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Schema;
+use SolutionForest\FilamentLoginGuard\Filament\Exports\UserSessionExporter;
 use SolutionForest\FilamentLoginGuard\Models\UserSession;
 use SolutionForest\FilamentLoginGuard\Support\AuthorizesPages;
 
@@ -147,6 +150,21 @@ class UserSessions extends Page implements HasTable
                             ->each(fn (UserSession $record) => $record->delete());
                     }),
             ]);
+    }
+
+    /**
+     * @return array<int, Action | ActionGroup>
+     */
+    protected function getHeaderActions(): array
+    {
+        if (! (bool) config('filament-loginguard.pages.sessions.export', true)) {
+            return [];
+        }
+
+        return [
+            ExportAction::make()
+                ->exporter(UserSessionExporter::class),
+        ];
     }
 
     protected static function isEnabled(): bool

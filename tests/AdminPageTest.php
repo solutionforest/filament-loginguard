@@ -3,6 +3,7 @@
 use Carbon\Carbon;
 use Filament\Facades\Filament;
 use Filament\Panel;
+use Filament\Widgets\WidgetConfiguration;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Livewire;
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
@@ -10,6 +11,10 @@ use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Pages\LoginGuard;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestCluster;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestUser;
+use SolutionForest\FilamentLoginGuard\Widgets\FailureTrendChart;
+use SolutionForest\FilamentLoginGuard\Widgets\LoginGuardStats;
+use SolutionForest\FilamentLoginGuard\Widgets\TopAttackedEmailsChart;
+use SolutionForest\FilamentLoginGuard\Widgets\TopSourceIpsChart;
 
 beforeEach(function () {
     Carbon::setTestNow('2026-01-01 00:00:00');
@@ -141,9 +146,37 @@ it('hides the stats widget when disabled', function () {
 
     LoginAttempt::factory()->create();
 
-    Livewire::test(LoginGuard::class)
-        ->assertSuccessful()
-        ->assertDontSee('Failed attempts (24h)');
+    // The widgets are lazy Livewire components; their content is not part of
+    // the page HTML, so assert the widget registration instead.
+    $widgets = Livewire::test(LoginGuard::class)->instance()->getVisibleHeaderWidgets();
+
+    expect(collect($widgets)->map(fn ($widget) => $widget instanceof WidgetConfiguration ? $widget->widget : $widget)->all())
+        ->not->toContain(LoginGuardStats::class);
+});
+
+it('registers the stats widget by default', function () {
+    LoginAttempt::factory()->create();
+
+    $widgets = collect(Livewire::test(LoginGuard::class)->instance()->getVisibleHeaderWidgets())
+        ->map(fn ($widget) => $widget instanceof WidgetConfiguration ? $widget->widget : $widget)
+        ->all();
+
+    expect($widgets)->toContain(LoginGuardStats::class);
+});
+
+it('hides the charts when disabled but keeps the stats widget', function () {
+    config()->set('filament-loginguard.pages.attempts.charts', false);
+
+    LoginAttempt::factory()->create();
+
+    $widgets = collect(Livewire::test(LoginGuard::class)->instance()->getVisibleHeaderWidgets())
+        ->map(fn ($widget) => $widget instanceof WidgetConfiguration ? $widget->widget : $widget)
+        ->all();
+
+    expect($widgets)->toContain(LoginGuardStats::class)
+        ->not->toContain(FailureTrendChart::class)
+        ->not->toContain(TopAttackedEmailsChart::class)
+        ->not->toContain(TopSourceIpsChart::class);
 });
 
 it('nests under a cluster when configured', function () {

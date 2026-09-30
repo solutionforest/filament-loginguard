@@ -6,7 +6,12 @@ All notable changes to `filament-loginguard` will be documented in this file.
 
 ### Added
 
-- Charts widget on the Login Attempts page: a daily failed-attempts trend (7/30-day filter) and Top-10 leaderboards for attacked emails and source IPs, all based on the windowed attempt counts. Toggled with the existing `pages.attempts.stats_widget` option.
+- Charts widget on the Login Attempts page: a daily failed-attempts trend (7/30-day filter) and Top-10 leaderboards for attacked emails and source IPs, all based on the windowed attempt counts.
+- CSV export for the Login Attempts and User Sessions admin pages, built on Filament's export system (queued, with column mapping and a signed download link). Emails are sanitized against CSV formula injection. Only CSV is offered (`ExportFormat::Csv`).
+
+### Changed
+
+- **Breaking:** the `pages.attempts.stats_widget` config key now controls only the numeric stats widget; the new `pages.attempts.charts` key (default `true`) controls the charts, and the new `pages.attempts.export` / `pages.sessions.export` keys (default `true`) control the CSV export actions.
 
 ## v0.5.0 - 2026-09-28
 

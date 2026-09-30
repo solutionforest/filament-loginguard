@@ -96,6 +96,10 @@ return [
             'last_30_days' => 'Last 30 days',
         ],
     ],
+    'export' => [
+        'completed' => 'Exported :count rows.',
+        'failed' => ':count rows failed to export.',
+    ],
     'self_unlock' => [
         'title' => 'Email unlocked',
         'success' => 'Your email has been unlocked. You can try logging in again.',

@@ -3,6 +3,7 @@
 use Carbon\Carbon;
 use Filament\Facades\Filament;
 use Filament\Panel;
+use Filament\Widgets\WidgetConfiguration;
 use Livewire\Livewire;
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
@@ -144,7 +145,7 @@ it('ranks the top source ips with windowed attempts', function () {
         ->and($data['datasets'][0]['data'])->toBe([7, 2]);
 });
 
-it('renders the charts on the admin page', function () {
+it('registers the charts on the admin page by default', function () {
     LoginAttempt::query()->create([
         'ip' => '1.2.3.4',
         'email' => 'a@example.com',
@@ -152,8 +153,13 @@ it('renders the charts on the admin page', function () {
         'window_started_at' => now()->subHour(),
     ]);
 
-    Livewire::test(LoginGuard::class)
-        ->assertSuccessful()
-        ->assertSee('1.2.3.4')
-        ->assertSee('a@example.com');
+    // The charts are lazy Livewire widgets; their content is not part of the
+    // page HTML, so assert the widget registration instead.
+    $widgets = collect(Livewire::test(LoginGuard::class)->instance()->getVisibleHeaderWidgets())
+        ->map(fn ($widget) => $widget instanceof WidgetConfiguration ? $widget->widget : $widget)
+        ->all();
+
+    expect($widgets)->toContain(FailureTrendChart::class)
+        ->toContain(TopAttackedEmailsChart::class)
+        ->toContain(TopSourceIpsChart::class);
 });

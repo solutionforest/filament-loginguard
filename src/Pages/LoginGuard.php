@@ -3,7 +3,9 @@
 namespace SolutionForest\FilamentLoginGuard\Pages;
 
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkAction;
+use Filament\Actions\ExportAction;
 use Filament\Clusters\Cluster;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -14,6 +16,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use SolutionForest\FilamentLoginGuard\Filament\Exports\LoginAttemptExporter;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Support\AuthorizesPages;
 use SolutionForest\FilamentLoginGuard\Widgets\FailureTrendChart;
@@ -98,16 +101,19 @@ class LoginGuard extends Page implements HasTable
      */
     protected function getHeaderWidgets(): array
     {
-        if (! (bool) config('filament-loginguard.pages.attempts.stats_widget', true)) {
-            return [];
+        $widgets = [];
+
+        if ((bool) config('filament-loginguard.pages.attempts.stats_widget', true)) {
+            $widgets[] = LoginGuardStats::class;
         }
 
-        return [
-            LoginGuardStats::class,
-            FailureTrendChart::class,
-            TopAttackedEmailsChart::class,
-            TopSourceIpsChart::class,
-        ];
+        if ((bool) config('filament-loginguard.pages.attempts.charts', true)) {
+            $widgets[] = FailureTrendChart::class;
+            $widgets[] = TopAttackedEmailsChart::class;
+            $widgets[] = TopSourceIpsChart::class;
+        }
+
+        return $widgets;
     }
 
     public function table(Table $table): Table
@@ -207,5 +213,20 @@ class LoginGuard extends Page implements HasTable
                         return $records;
                     }),
             ]);
+    }
+
+    /**
+     * @return array<int, Action | ActionGroup>
+     */
+    protected function getHeaderActions(): array
+    {
+        if (! (bool) config('filament-loginguard.pages.attempts.export', true)) {
+            return [];
+        }
+
+        return [
+            ExportAction::make()
+                ->exporter(LoginAttemptExporter::class),
+        ];
     }
 }

@@ -71,6 +71,9 @@ class TestCase extends Orchestra
     protected function defineDatabaseMigrations(): void
     {
         // The package service provider auto-loads the plugin migrations
-        // (runsMigrations), so nothing extra is registered here.
+        // (runsMigrations), so nothing extra is registered here — except the
+        // `exports` table, which Filament ships as an app-level migration and
+        // which the CSV export feature writes to.
+        $this->loadMigrationsFrom(__DIR__ . '/Support/migrations');
     }
 }

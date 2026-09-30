@@ -1,0 +1,38 @@
+<?php
+
+// Mirror of Filament's create_exports_table migration. The export feature
+// writes to this table; Filament ships it as an app-level migration, but the
+// package's test suite does not run Filament's own migrations, so we provide
+// it here (tests only).
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (Schema::hasTable('exports')) {
+            return;
+        }
+
+        Schema::create('exports', function (Blueprint $table): void {
+            $table->id();
+            $table->timestamp('completed_at')->nullable();
+            $table->string('file_disk');
+            $table->string('file_name')->nullable();
+            $table->string('exporter');
+            $table->unsignedInteger('processed_rows')->default(0);
+            $table->unsignedInteger('total_rows');
+            $table->unsignedInteger('successful_rows')->default(0);
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('exports');
+    }
+};

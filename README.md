@@ -48,6 +48,8 @@ Enterprise-grade login security for Filament and Laravel — persistent brute-fo
 - 🧰 **Filament Management Interface**
   - 📋 Login Attempts page — inspect & unblock recorded attempts
   - 📊 Failed-attempts / lockout stats widget
+  - 📈 Failure-trend & top-attacked charts (7/30-day trend, Top-10 emails & IPs)
+  - 📤 CSV export of attempts & sessions (via Filament's export system)
   - 🛡️ Gate-based per-page authorization
 
 <div class="filament-hidden">
@@ -171,6 +173,11 @@ Lockout semantics:
 
 ![Login Attempts page](.github/art/attempts-page.png)
 
+The page also includes visualization and reporting tools:
+
+- **Charts** (`pages.attempts.charts`): a daily failed-attempts trend with a 7/30-day filter plus Top-10 leaderboards for attacked emails and source IPs — attack waves are obvious at a glance.
+- **CSV export** (`pages.attempts.export`): export the table (respecting your filters) via Filament's export system. Exports run through the queue, so a queue worker must be available in production.
+
 ## Session management
 
 Requires `SESSION_DRIVER=database`. The **User Sessions** admin page lists every active session with a human-readable "last active" state (Laravel updates `last_activity` on every request, including Livewire clicks) and a one-click Revoke.
@@ -179,6 +186,7 @@ Requires `SESSION_DRIVER=database`. The **User Sessions** admin page lists every
 
 - **New-device detection**: each login's browser+platform is fingerprinted (`sessions.new_device`); a session is flagged "New" on the page when its fingerprint was first seen within `window_hours`, and an optional email notifies the account owner the first time a device is seen.
 - **Concurrent session limits**: set `sessions.concurrent_limit` to cap sessions per user — the oldest sessions are evicted to make room when a new login would exceed the limit.
+- **CSV export** (`pages.sessions.export`): export the active-session list as CSV (via Filament's export system).
 - Closing the browser without logging out (or backgrounding the tab) simply stops updating `last_activity`, so the session ages out naturally and expires after `session.lifetime`; sweep expired rows with the `filament-loginguard:cleanup-sessions` command.
 
 ## Configuration
@@ -266,6 +274,8 @@ return [
             'authorize_view' => null,      // viewing the page
             'authorize_unblock' => null,   // unblock / bulk-unblock actions
             'stats_widget' => true,        // show the failed-attempts / lockout stats widget
+            'charts' => true,              // show the failure-trend & top-attacked charts
+            'export' => true,              // allow CSV export of the attempts table
         ],
 
         'sessions' => [
@@ -279,6 +289,7 @@ return [
             'authorize' => null,
             'authorize_view' => null,      // viewing the page
             'authorize_revoke' => null,    // revoke / bulk-revoke actions
+            'export' => true,              // allow CSV export of the sessions table
         ],
     ],
 ];
@@ -342,7 +353,7 @@ Planned features, roughly in the order they are likely to land. Suggestions and 
 - [x] **Charts widget** — visualize the lockout stats that the numeric widget already tracks: a daily failed-attempts trend for the last 7/30 days and Top-10 leaderboards (attacked emails, source IPs, devices). Makes attack waves obvious at a glance. *(shipped in v0.5.0)*
 - [ ] **Slack / Telegram / Webhook notifications** — deliver lockout alerts beyond email via Laravel notification channels — a Slack channel is where on-call engineers actually look. Configured per channel (webhook URL, queue) alongside the existing mail notifications.
 - [ ] **Cloudflare integration** — push lockouts to the edge: when an IP is locked out, automatically create a block rule in your Cloudflare zone via the API (and optionally remove it on unlock). Attack traffic is dropped at the CDN instead of ever reaching Laravel, which changes the game under volumetric attacks.
-- [ ] **CSV export** — export filtered Login Attempts and User Sessions as CSV from the admin tables for compliance audits (ISO 27001 / SOC 2), incident forensics, and management reports.
+- [x] **CSV export** — export filtered Login Attempts and User Sessions as CSV from the admin tables for compliance audits (ISO 27001 / SOC 2), incident forensics, and management reports. *(shipped in v0.5.0)*
 
 ## Testing
 
