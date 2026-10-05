@@ -3,7 +3,7 @@
 namespace SolutionForest\FilamentLoginGuard\Widgets;
 
 use Filament\Widgets\ChartWidget;
-use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 
 class TopSourceIpsChart extends ChartWidget
 {
@@ -26,20 +26,23 @@ class TopSourceIpsChart extends ChartWidget
      */
     protected function getData(): array
     {
-        // Windowed failures per source IP: only attempts inside an active
-        // window count, matching the lockout semantics.
-        $top = LoginAttempt::query()
-            ->where('window_started_at', '>=', now()->subDay()->startOfDay())
-            ->where('attempts', '>', 0)
-            ->orderByDesc('attempts')
+        // True 24h failures per source IP from the event log, aggregated across
+        // all attacked emails.
+        $top = SecurityEvent::query()
+            ->where('type', SecurityEvent::TYPE_LOGIN_FAILED)
+            ->where('occurred_at', '>=', now()->subDay())
+            ->whereNotNull('ip')
+            ->selectRaw('ip, count(*) as aggregate')
+            ->groupBy('ip')
+            ->orderByDesc('aggregate')
             ->limit(10)
-            ->get(['ip', 'attempts']);
+            ->get();
 
         return [
             'datasets' => [
                 [
                     'label' => (string) __('filament-loginguard::loginguard.charts.top_ips.dataset'),
-                    'data' => $top->pluck('attempts')->all(),
+                    'data' => $top->pluck('aggregate')->all(),
                     'backgroundColor' => '#3b82f6',
                     'borderRadius' => 4,
                     'maxBarThickness' => 28,

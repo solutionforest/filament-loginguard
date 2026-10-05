@@ -6,12 +6,23 @@ All notable changes to `filament-loginguard` will be documented in this file.
 
 ### Added
 
-- Charts widget on the Login Attempts page: a daily failed-attempts trend (7/30-day filter) and Top-10 leaderboards for attacked emails and source IPs, all based on the windowed attempt counts.
+- Charts widget on the Login Attempts page: a daily failed-attempts trend (7/30-day filter) and Top-10 leaderboards for attacked emails and source IPs. Charts read from the new event log, so the history is accurate across window resets and cleanups; leaderboards aggregate across IPs/emails correctly.
+- Append-only security event log (`filament_loginguard_events`): every failed login, successful login, lockout and unlock is recorded. This is the data source for the charts and the 24h stats widget.
+- Scoped lock-state table (`filament_loginguard_locks`): IP locks and email locks are now fully independent rows, so releasing an email lock (self-unlock, admin unblock, successful login) can never clear an IP lock that shares the same attempt row.
 - CSV export for the Login Attempts and User Sessions admin pages, built on Filament's export system (queued, with column mapping and a signed download link). Emails are sanitized against CSV formula injection. Only CSV is offered (`ExportFormat::Csv`).
+
+### Fixed
+
+- **Breaking (architecture):** lock state moved out of the attempts table. A single attempt row could previously hold both the IP lock and the email lock in one `locked_until` column — clearing the email lock also cleared the IP lock on the same row, and admin "unblock" on one row left the rest of the IP's rows locked while the UI showed them unlocked. Locks are now their own table; the `locked_until` column on attempts is legacy only.
+- Self-unlock confirmation form now posts to the full signed URL (`request()->fullUrl()`), preserving the `expires`/`signature` query string. The previous form action dropped the query string, which would have caused a 403 on the real flow (tests only exercised the URL directly, not the rendered form).
+- The stats widget's "successful logins (24h)" now counts real success events instead of summing lifetime `success_count` counters; "locked out now" counts the lock-state table directly (early-released locks disappear immediately) instead of a DB-specific `||` concat that does not work on MySQL.
+- The charts' "24h" leaderboards now use a rolling `now()->subDay()` window instead of "since midnight" semantics.
+- The attempts cleanup command no longer sweeps rows whose IP or email scope still has an active lock.
 
 ### Changed
 
 - **Breaking:** the `pages.attempts.stats_widget` config key now controls only the numeric stats widget; the new `pages.attempts.charts` key (default `true`) controls the charts, and the new `pages.attempts.export` / `pages.sessions.export` keys (default `true`) control the CSV export actions.
+- **Breaking:** lockout history rows are now scoped (`ip` or `email` set, the other null) instead of always carrying both values.
 
 ## v0.5.0 - 2026-09-28
 

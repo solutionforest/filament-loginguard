@@ -5,6 +5,7 @@ use Filament\Facades\Filament;
 use Filament\Panel;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Livewire;
+use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use Workbench\App\Models\User;
 use Workbench\Database\Factories\UserFactory;
@@ -58,7 +59,7 @@ it('locks out through the native Filament login page', function () {
 
     $row = LoginAttempt::query()->where('email', 'admin@example.com')->sole();
 
-    expect($row->isLocked())->toBeTrue();
+    expect(app(LoginGuardService::class)->isLocked($row->ip, $row->email))->toBeTrue();
 
     // A further attempt is rejected by the lockout before any credential work.
     Livewire::test(Login::class)

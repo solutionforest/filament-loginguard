@@ -4,6 +4,7 @@ use Carbon\Carbon;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LockoutHistory;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
 
 beforeEach(function () {
     Carbon::setTestNow('2026-01-01 00:00:00');
@@ -52,10 +53,10 @@ it('resets stale attempt counters but keeps lockout_count for escalation', funct
     ]);
 
     // A fresh failure after cleanup must derive its escalation from the
-    // history table (3 prior lockouts), not start over.
+    // history table (2 prior IP-scope lockouts), not start over.
     LockoutHistory::query()->create([
         'ip' => $row->ip,
-        'email' => $row->email,
+        'email' => null,
         'locked_at' => now()->subDay(),
         'locked_until' => now()->subDay()->addMinutes(15),
         'lockout_count' => 1,
@@ -63,7 +64,7 @@ it('resets stale attempt counters but keeps lockout_count for escalation', funct
     ]);
     LockoutHistory::query()->create([
         'ip' => $row->ip,
-        'email' => $row->email,
+        'email' => null,
         'locked_at' => now()->subHours(20),
         'locked_until' => now()->subHours(19),
         'lockout_count' => 2,
@@ -74,8 +75,9 @@ it('resets stale attempt counters but keeps lockout_count for escalation', funct
 
     expect(LoginAttempt::query()->whereKey($row->getKey())->exists())->toBeFalse();
 
-    // Trigger two fresh failures: the row is recreated and locks again at the
-    // 3rd escalation step (history has 2 entries = 2 prior lockouts), not the 1st.
+    // Trigger two fresh failures: the row is recreated and the IP scope locks
+    // again at the 3rd escalation step (history has 2 entries = 2 prior
+    // IP lockouts), not the 1st.
     request()->server->set('REMOTE_ADDR', $row->ip);
     $service = app(LoginGuardService::class);
     $service->recordFailure($row->ip, $row->email);
@@ -85,7 +87,7 @@ it('resets stale attempt counters but keeps lockout_count for escalation', funct
 
     $fresh = LoginAttempt::query()->where('ip', $row->ip)->where('email', $row->email)->sole();
 
-    expect($fresh->lockout_count)->toBe(3)
-        ->and($fresh->locked_until->equalTo(now()->addDays(3)))->toBeTrue()
-        ->and(LockoutHistory::query()->count())->toBe(3);
+    expect(LoginGuardLock::query()->where('scope_type', 'ip')->where('scope_key', $row->ip)->sole()->escalation_count)->toBe(3)
+        ->and(LoginGuardLock::query()->where('scope_type', 'ip')->where('scope_key', $row->ip)->sole()->locked_until->equalTo(now()->addDays(3)))->toBeTrue()
+        ->and(LockoutHistory::query()->count())->toBe(4);
 });

@@ -17,7 +17,9 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use SolutionForest\FilamentLoginGuard\Filament\Exports\LoginAttemptExporter;
+use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
 use SolutionForest\FilamentLoginGuard\Support\AuthorizesPages;
 use SolutionForest\FilamentLoginGuard\Widgets\FailureTrendChart;
 use SolutionForest\FilamentLoginGuard\Widgets\LoginGuardStats;
@@ -141,13 +143,10 @@ class LoginGuard extends Page implements HasTable
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('locked_until')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.locked_until'))
-                    ->state(fn (LoginAttempt $record): ?string => $record->isLocked()
-                        ? $record->locked_until->diffForHumans()
-                        : null)
+                    ->state(fn (LoginAttempt $record): ?string => app(LoginGuardService::class)->lockFor($record->ip, $record->email)?->diffForHumans())
                     ->badge()
                     ->placeholder('-')
-                    ->tooltip(fn (LoginAttempt $record): ?string => $record->locked_until?->toDateTimeString())
-                    ->color(fn (LoginAttempt $record): string => $record->isLocked() ? 'danger' : 'gray'),
+                    ->color(fn (LoginAttempt $record): string => app(LoginGuardService::class)->isLocked($record->ip, $record->email) ? 'danger' : 'gray'),
                 TextColumn::make('last_attempt_at')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.last_attempt_at'))
                     ->state(fn (LoginAttempt $record): ?string => $record->last_attempt_at?->diffForHumans())
@@ -177,7 +176,22 @@ class LoginGuard extends Page implements HasTable
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return match ($data['value']) {
-                            'locked' => $query->where('locked_until', '>', now()),
+                            'locked' => $query->where(function (Builder $q): void {
+                                // Blocked by either the row's IP lock or its email lock.
+                                $q->whereExists(function (\Illuminate\Database\Query\Builder $sub): void {
+                                    $sub->selectRaw(1)
+                                        ->from('filament_loginguard_locks')
+                                        ->whereColumn('scope_key', 'filament_loginguard_attempts.ip')
+                                        ->where('scope_type', 'ip')
+                                        ->where('locked_until', '>', now());
+                                })->orWhereExists(function (\Illuminate\Database\Query\Builder $sub): void {
+                                    $sub->selectRaw(1)
+                                        ->from('filament_loginguard_locks')
+                                        ->whereColumn('scope_key', 'filament_loginguard_attempts.email')
+                                        ->where('scope_type', 'email')
+                                        ->where('locked_until', '>', now());
+                                });
+                            }),
                             'tracked' => $query->where('attempts', '>', 0),
                             default => $query,
                         };
@@ -189,10 +203,16 @@ class LoginGuard extends Page implements HasTable
                     ->icon('heroicon-o-lock-open')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn (LoginAttempt $record): bool => $record->isLocked()
-                        && AuthorizesPages::canUnblockAttempts())
+                    ->visible(function (LoginAttempt $record): bool {
+                        // Releasing both scopes of this row: the UI treats the
+                        // pair as one unit for admins.
+                        return app(LoginGuardService::class)->isLocked($record->ip, $record->email)
+                            && AuthorizesPages::canUnblockAttempts();
+                    })
                     ->action(function (LoginAttempt $record): void {
-                        $record->unlock();
+                        $service = app(LoginGuardService::class);
+                        $service->releaseLock(LoginGuardLock::SCOPE_IP, $record->ip);
+                        $service->releaseLock(LoginGuardLock::SCOPE_EMAIL, $record->email);
 
                         Notification::make()
                             ->title(__('filament-loginguard::loginguard.page.table.actions.unblocked'))
@@ -208,7 +228,12 @@ class LoginGuard extends Page implements HasTable
                     ->requiresConfirmation()
                     ->visible(fn (): bool => AuthorizesPages::canUnblockAttempts())
                     ->action(function (Collection $records): Collection {
-                        $records->each(fn (LoginAttempt $record) => $record->unlock());
+                        $service = app(LoginGuardService::class);
+
+                        $records->each(function (LoginAttempt $record) use ($service): void {
+                            $service->releaseLock(LoginGuardLock::SCOPE_IP, $record->ip);
+                            $service->releaseLock(LoginGuardLock::SCOPE_EMAIL, $record->email);
+                        });
 
                         return $records;
                     }),

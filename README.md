@@ -118,6 +118,19 @@ php artisan vendor:publish --tag="filament-loginguard-views"
 php artisan vendor:publish --tag="filament-loginguard-translations"
 ```
 
+#### CSV export prerequisites
+
+The CSV export buttons are built on [Filament's export system](https://filamentphp.com/docs/5.x/actions/export), which needs its own database tables. Fresh apps may be missing them — run:
+
+```bash
+php artisan make:queue-batches-table
+php artisan make:notifications-table
+php artisan vendor:publish --tag=filament-actions-migrations
+php artisan migrate
+```
+
+Without these, the first export attempt fails with a "table not found" error (`exports`, `job_batches` or `notifications`). Exports also run through the queue, so a queue worker (or the `sync` driver) must be available.
+
 ### 3. Register the Admin Pages
 
 To enable the **admin pages** (Login Attempts: view / unblock recorded attempts; User Sessions: list / revoke active sessions), register the plugin in your panel provider, e.g. `app/Providers/Filament/AdminPanelProvider.php`:
@@ -350,10 +363,10 @@ Planned features, roughly in the order they are likely to land. Suggestions and 
 - [ ] **Risk-based login (adaptive authentication)** — score every login from signals the package already collects (unseen device fingerprint, new IP range, unusual time of day, recent failure counts) and respond proportionally: allow, step-up verification (email code), or block and alert the account owner. An attacker with a stolen password is challenged on an unfamiliar device, while the legitimate owner logs in without noticing anything.
 - [ ] **My devices (self-service account activity)** — a per-user panel section (like Google's "Your devices") listing the user's own active sessions — browser, OS, IP, last active — with one-click "This isn't me" revoke and a "sign out everywhere else" button. Users can react to suspicious logins themselves instead of waiting for an admin.
 - [ ] **Geo / ASN blocking** — resolve the login source against an IP geolocation database (e.g. MaxMind GeoLite2) and optionally block or flag traffic by country or ASN. Blocking datacenter ASNs is a very cheap way to cut most scripted attacks without touching residential users; flagged attempts get a country badge on the admin pages.
-- [x] **Charts widget** — visualize the lockout stats that the numeric widget already tracks: a daily failed-attempts trend for the last 7/30 days and Top-10 leaderboards (attacked emails, source IPs, devices). Makes attack waves obvious at a glance. *(shipped in v0.5.0)*
+- [x] **Charts widget** — visualize the lockout stats that the numeric widget already tracks: a daily failed-attempts trend for the last 7/30 days and Top-10 leaderboards (attacked emails, source IPs, devices). Makes attack waves obvious at a glance. *(shipped in v0.6.0)*
 - [ ] **Slack / Telegram / Webhook notifications** — deliver lockout alerts beyond email via Laravel notification channels — a Slack channel is where on-call engineers actually look. Configured per channel (webhook URL, queue) alongside the existing mail notifications.
 - [ ] **Cloudflare integration** — push lockouts to the edge: when an IP is locked out, automatically create a block rule in your Cloudflare zone via the API (and optionally remove it on unlock). Attack traffic is dropped at the CDN instead of ever reaching Laravel, which changes the game under volumetric attacks.
-- [x] **CSV export** — export filtered Login Attempts and User Sessions as CSV from the admin tables for compliance audits (ISO 27001 / SOC 2), incident forensics, and management reports. *(shipped in v0.5.0)*
+- [x] **CSV export** — export filtered Login Attempts and User Sessions as CSV from the admin tables for compliance audits (ISO 27001 / SOC 2), incident forensics, and management reports. *(shipped in v0.6.0)*
 
 ## Testing
 

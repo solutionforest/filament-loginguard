@@ -18,7 +18,7 @@
     <div class="card">
         <h1>@lang('filament-loginguard::loginguard.self_unlock.confirm_title')</h1>
         <p>@lang('filament-loginguard::loginguard.self_unlock.confirm_intro')</p>
-        <form method="POST" action="{{ url()->current() }}">
+        <form method="POST" action="{{ request()->fullUrl() }}">
             @csrf
             <button type="submit">@lang('filament-loginguard::loginguard.self_unlock.confirm_action')</button>
         </form>

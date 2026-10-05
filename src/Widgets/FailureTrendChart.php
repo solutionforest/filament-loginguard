@@ -3,12 +3,10 @@
 namespace SolutionForest\FilamentLoginGuard\Widgets;
 
 use Filament\Widgets\ChartWidget;
-use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 
 class FailureTrendChart extends ChartWidget
 {
-    protected ?string $heading = null;
-
     protected ?string $maxHeight = '260px';
 
     protected int | string | array $columnSpan = 'full';
@@ -49,14 +47,14 @@ class FailureTrendChart extends ChartWidget
 
         $start = now()->subDays($days - 1)->startOfDay();
 
-        // Daily failure counts from the fixed window: only rows whose current
-        // window started within the range count, weighted by their attempts.
-        $daily = LoginAttempt::query()
-            ->where('window_started_at', '>=', $start)
-            ->where('attempts', '>', 0)
-            ->get(['window_started_at', 'attempts'])
-            ->groupBy(fn (LoginAttempt $row): string => $row->window_started_at->format('Y-m-d'))
-            ->map(fn ($rows): int => (int) $rows->sum('attempts'));
+        // Daily failure counts from the append-only event log: a true history
+        // that survives window resets and cleanups.
+        $daily = SecurityEvent::query()
+            ->where('type', SecurityEvent::TYPE_LOGIN_FAILED)
+            ->where('occurred_at', '>=', $start)
+            ->get(['occurred_at'])
+            ->groupBy(fn (SecurityEvent $event): string => $event->occurred_at->format('Y-m-d'))
+            ->map(fn ($events): int => $events->count());
 
         $labels = [];
         $values = [];

@@ -4,8 +4,8 @@ namespace SolutionForest\FilamentLoginGuard\Widgets;
 
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use SolutionForest\FilamentLoginGuard\Models\LockoutHistory;
-use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
+use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 
 class LoginGuardStats extends StatsOverviewWidget
 {
@@ -17,39 +17,38 @@ class LoginGuardStats extends StatsOverviewWidget
         $dayAgo = now()->subDay();
 
         return [
-            // Sum over active windows only: `window_started_at` marks when the
-            // currently-counting window began, so attempts from outside the
-            // window are never included.
+            // Actual failed-login events in the last 24h, from the append-only
+            // event log.
             Stat::make(
                 (string) __('filament-loginguard::loginguard.stats.failed_attempts_24h'),
-                LoginAttempt::query()
-                    ->where('window_started_at', '>=', $dayAgo)
-                    ->sum('attempts'),
+                SecurityEvent::query()
+                    ->where('type', SecurityEvent::TYPE_LOGIN_FAILED)
+                    ->where('occurred_at', '>=', $dayAgo)
+                    ->count(),
             )
                 ->description((string) __('filament-loginguard::loginguard.stats.last_24h'))
                 ->descriptionIcon('heroicon-o-exclamation-triangle')
                 ->color('danger'),
 
-            // Count distinct locked (ip, email) pairs via the append-only
-            // history: an aggregate IP lock touches many rows that all share
-            // the same triggered-by pair, which would otherwise overcount.
+            // Active locks straight from the lock-state table: early-released
+            // locks (admin unblock / self-unlock) disappear the moment they are
+            // lifted, and IP and email locks are counted individually.
             Stat::make(
                 (string) __('filament-loginguard::loginguard.stats.locked_out_now'),
-                LockoutHistory::query()
-                    ->where('locked_until', '>', now())
-                    ->selectRaw('count(distinct ip || "|" || email) as aggregate')
-                    ->value('aggregate'),
+                LoginGuardLock::activeQuery()->count(),
             )
                 ->description((string) __('filament-loginguard::loginguard.stats.active_lockouts'))
                 ->descriptionIcon('heroicon-o-lock-closed')
                 ->color('danger'),
 
-            // Count actual successful logins (success_count deltas), not rows.
+            // Actual successful-login events in the last 24h, from the
+            // append-only event log.
             Stat::make(
                 (string) __('filament-loginguard::loginguard.stats.successful_logins_24h'),
-                LoginAttempt::query()
-                    ->where('last_success_at', '>=', $dayAgo)
-                    ->sum('success_count'),
+                SecurityEvent::query()
+                    ->where('type', SecurityEvent::TYPE_LOGIN_SUCCEEDED)
+                    ->where('occurred_at', '>=', $dayAgo)
+                    ->count(),
             )
                 ->description((string) __('filament-loginguard::loginguard.stats.last_24h'))
                 ->descriptionIcon('heroicon-o-check-circle')

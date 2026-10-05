@@ -21,7 +21,7 @@ it('deletes stale rows but keeps fresh and locked ones', function () {
         'last_attempt_at' => now(),
     ]);
 
-    $locked = LoginAttempt::factory()->locked()->create([
+    $locked = LoginAttempt::factory()->locked(lockedUntil: now()->addMinutes(15))->create([
         'last_attempt_at' => now()->subMinutes(31),
     ]);
 

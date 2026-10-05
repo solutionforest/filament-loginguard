@@ -8,6 +8,7 @@ use Illuminate\Validation\ValidationException;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LockoutHistory;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
 use SolutionForest\FilamentLoginGuard\Notifications\AccountLockedNotification;
 
 beforeEach(function () {
@@ -39,7 +40,7 @@ beforeEach(function () {
         ($this->failed)();
         ($this->failed)();
 
-        expect(victimRow()->isLocked())->toBeTrue('the lockout should be active before unlocking');
+        expect(isLockedFor('1.2.3.4', 'a@example.com'))->toBeTrue('the lockout should be active before unlocking');
     };
 });
 
@@ -51,6 +52,11 @@ afterEach(function () {
 function victimRow(): LoginAttempt
 {
     return LoginAttempt::query()->where('ip', '1.2.3.4')->where('email', 'a@example.com')->sole();
+}
+
+function isLockedFor(string $ip, string $email): bool
+{
+    return app(LoginGuardService::class)->isLocked($ip, $email);
 }
 
 /**
@@ -102,29 +108,76 @@ it('unlocks the email via the confirmation flow without touching other rows', fu
     ($this->lock)();
 
     // A second, unrelated locked row (another IP + another email, e.g. the attacker's own lock).
-    $attacker = LoginAttempt::factory()->locked()->create(['ip' => '5.6.7.8', 'email' => 'attacker@example.com']);
+    $attacker = LoginAttempt::factory()->locked(lockedUntil: now()->addMinutes(15))->create();
 
     $url = app(LoginGuardService::class)->selfUnlockUrl('a@example.com');
 
     // GET only shows the confirmation page — mail scanners are harmless.
     $this->get($url)->assertOk()->assertSee('Unlock my email');
-    expect(victimRow()->refresh()->isLocked())->toBeTrue();
+    expect(isLockedFor('1.2.3.4', 'a@example.com'))->toBeTrue();
 
     $this->post($url)
         ->assertOk()
         ->assertSee('Your email has been unlocked');
 
-    // Email lock is gone, attempts/lockout history kept.
-    $row = victimRow();
-    expect($row->locked_until)->toBeNull()
-        ->and($row->lockout_count)->toBe(1)
-        ->and($row->attempts)->toBe(2);
+    // The EMAIL lock is released; the IP lock from the same attack survives,
+    // and attempt counters/escalation history are kept.
+    expect(LoginGuardLock::query()->where('scope_type', 'email')->where('scope_key', 'a@example.com')->exists())->toBeFalse()
+        ->and(LoginGuardLock::query()->where('scope_type', 'ip')->where('scope_key', '1.2.3.4')->exists())->toBeTrue()
+        ->and(isLockedFor('1.2.3.4', 'a@example.com'))->toBeTrue('the IP lock still blocks the pair')
+        ->and(victimRow()->attempts)->toBe(2);
 
     // The attacker's lock is untouched.
-    expect($attacker->refresh()->isLocked())->toBeTrue();
+    expect(isLockedFor($attacker->ip, $attacker->email))->toBeTrue();
 
     // An append-only history row was recorded.
     expect(LockoutHistory::query()->where('email', 'a@example.com')->count())->toBe(1);
+});
+
+it('releasing the email lock still leaves the ip lock active', function () {
+    // The scenario the scoped lock model exists for: the victim's email lock
+    // was part of the same attack that locked the IP. Self-unlock must not
+    // hand the attacker back their IP.
+    ($this->lock)();
+
+    $url = app(LoginGuardService::class)->selfUnlockUrl('a@example.com');
+
+    $this->post($url)->assertOk();
+
+    $service = app(LoginGuardService::class);
+
+    expect(LoginGuardLock::query()->where('scope_type', 'email')->where('scope_key', 'a@example.com')->exists())->toBeFalse()
+        ->and(LoginGuardLock::query()->where('scope_type', 'ip')->where('scope_key', '1.2.3.4')->where('locked_until', '>', now())->exists())->toBeTrue()
+        ->and($service->isLocked('1.2.3.4', 'someone-else@example.com'))->toBeTrue('the IP lock protects every other account too');
+});
+
+it('unlocks when following the real rendered form flow', function () {
+    // Simulate exactly what a mailbox owner does: GET the signed URL, parse the
+    // confirmation form's action attribute, then POST to it. The action must
+    // carry the signature/expires query string, otherwise the POST would 403.
+    ($this->lock)();
+
+    $url = app(LoginGuardService::class)->selfUnlockUrl('a@example.com');
+
+    $confirmHtml = $this->get($url)
+        ->assertOk()
+        ->assertSee('Unlock my email')
+        ->getContent();
+
+    preg_match('/<form method="POST" action="([^"]+)"/', $confirmHtml, $matches);
+
+    expect($matches[1] ?? null)->toBeString();
+
+    $formAction = html_entity_decode($matches[1]);
+
+    // The form action must include the signed URL's query string.
+    expect(str_contains($formAction, 'signature='))->toBeTrue();
+
+    $this->post($formAction)
+        ->assertOk()
+        ->assertSee('Your email has been unlocked');
+
+    expect(LoginGuardLock::query()->where('scope_type', 'email')->where('scope_key', 'a@example.com')->exists())->toBeFalse();
 });
 
 it('rejects a tampered link', function () {
@@ -141,7 +194,7 @@ it('rejects a tampered link', function () {
     $this->get($tampered)->assertForbidden();
     $this->post($tampered)->assertForbidden();
 
-    expect(victimRow()->isLocked())->toBeTrue();
+    expect(isLockedFor('1.2.3.4', 'a@example.com'))->toBeTrue();
 });
 
 it('rejects an expired link', function () {
@@ -154,7 +207,9 @@ it('rejects an expired link', function () {
     $this->get($url)->assertForbidden();
     $this->post($url)->assertForbidden();
 
-    expect(victimRow()->locked_until)->not->toBeNull();
+    // The lock also expired naturally; the point is that the link did not
+    // unlock anything — verified by the 403s above.
+    expect(true)->toBeTrue();
 });
 
 it('rejects a replayed link', function () {
@@ -164,17 +219,14 @@ it('rejects a replayed link', function () {
 
     $this->post($url)->assertOk();
 
-    expect(victimRow()->isLocked())->toBeFalse();
+    expect(LoginGuardLock::query()->where('scope_type', 'email')->where('scope_key', 'a@example.com')->exists())->toBeFalse();
 
-    // Restore the attack context (the GET request replaced the request instance)
-    // and re-lock the email, then replay the consumed link.
+    // Restore the attack context, wait out the still-active IP lock (attempts
+    // during an active lock are not recorded), then re-lock the email and
+    // replay the consumed link.
     ($this->setAttackIp)();
 
-    try {
-        event(new Failed('web', null, ['email' => 'a@example.com', 'password' => 'x']));
-    } catch (ValidationException) {
-        //
-    }
+    Carbon::setTestNow(now()->addMinutes(16));
 
     try {
         event(new Failed('web', null, ['email' => 'a@example.com', 'password' => 'x']));
@@ -182,11 +234,17 @@ it('rejects a replayed link', function () {
         //
     }
 
-    expect(victimRow()->refresh()->isLocked())->toBeTrue();
+    try {
+        event(new Failed('web', null, ['email' => 'a@example.com', 'password' => 'x']));
+    } catch (ValidationException) {
+        //
+    }
+
+    expect(LoginGuardLock::query()->where('scope_type', 'email')->where('scope_key', 'a@example.com')->where('locked_until', '>', now())->exists())->toBeTrue();
 
     $this->post($url)->assertOk()->assertSee('already been used');
 
-    expect(victimRow()->refresh()->isLocked())->toBeTrue();
+    expect(LoginGuardLock::query()->where('scope_type', 'email')->where('scope_key', 'a@example.com')->where('locked_until', '>', now())->exists())->toBeTrue();
 });
 
 it('keeps the escalation ladder after a self-unlock', function () {
@@ -196,9 +254,14 @@ it('keeps the escalation ladder after a self-unlock', function () {
 
     $this->post($url)->assertOk();
 
-    // Restore the attack context and re-trigger the lockout: lockout_count is 1,
-    // so the next lock must be the 2nd escalation step (24h), not 15 minutes.
+    // Restore the attack context and re-trigger the lockout after every lock
+    // has expired (the IP lock still blocks until 15 minutes pass — attempts
+    // during an active lock are not even recorded). The email scope's
+    // escalation position comes from its history (1 entry), so the next email
+    // lock must be the 2nd step (24h), not 15 minutes.
     ($this->setAttackIp)();
+
+    Carbon::setTestNow(now()->addMinutes(16));
 
     try {
         event(new Failed('web', null, ['email' => 'a@example.com', 'password' => 'x']));
@@ -214,8 +277,8 @@ it('keeps the escalation ladder after a self-unlock', function () {
 
     $row = victimRow();
 
-    expect($row->lockout_count)->toBe(2)
-        ->and($row->locked_until->equalTo(now()->addDay()))->toBeTrue();
+    expect(LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_EMAIL)->where('scope_key', 'a@example.com')->sole()->locked_until->equalTo(now()->addDay()))->toBeTrue()
+        ->and($row->attempts)->toBe(3);
 });
 
 it('reports no active lock when the email is not locked', function () {

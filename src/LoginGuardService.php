@@ -12,6 +12,8 @@ use Illuminate\Support\Str;
 use SolutionForest\FilamentLoginGuard\Models\KnownDevice;
 use SolutionForest\FilamentLoginGuard\Models\LockoutHistory;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
+use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 use SolutionForest\FilamentLoginGuard\Models\UserSession;
 use SolutionForest\FilamentLoginGuard\Notifications\AccountLockedNotification;
 use SolutionForest\FilamentLoginGuard\Notifications\NewDeviceLoginNotification;
@@ -54,18 +56,54 @@ final class LoginGuardService
             return false;
         }
 
-        return $this->matchingRowsQuery($ip, $email)
-            ->where('locked_until', '>', now())
-            ->exists();
+        return $this->activeLocksQuery($ip, $email)->exists();
     }
 
     public function remainingLockSeconds(string $ip, ?string $email): int
     {
-        $lockedUntil = $this->matchingRowsQuery($ip, $email)
-            ->where('locked_until', '>', now())
-            ->max('locked_until');
+        $lockedUntil = $this->activeLocksQuery($ip, $email)->max('locked_until');
 
         return $lockedUntil ? (int) now()->diffInSeconds($lockedUntil) : 0;
+    }
+
+    /**
+     * The furthest-out active lock applying to this (ip, email), or null.
+     */
+    public function lockFor(string $ip, ?string $email): ?Carbon
+    {
+        $lockedUntil = $this->activeLocksQuery($ip, $email)->max('locked_until');
+
+        return $lockedUntil !== null ? Carbon::parse($lockedUntil) : null;
+    }
+
+    /**
+     * Active locks that apply to the given request: the IP's lock and/or the
+     * email's lock (and/or the exact pair's lock when per-pair tracking is
+     * used), each a fully independent row in the locks table.
+     *
+     * @return Builder<LoginGuardLock>
+     */
+    private function activeLocksQuery(string $ip, ?string $email): Builder
+    {
+        return LoginGuardLock::activeQuery()
+            ->where(function (Builder $query) use ($ip, $email): void {
+                $query->where(function (Builder $q) use ($ip): void {
+                    $q->where('scope_type', LoginGuardLock::SCOPE_IP)
+                        ->where('scope_key', $ip);
+                });
+
+                if (filled($email)) {
+                    $query->orWhere(function (Builder $q) use ($email): void {
+                        $q->where('scope_type', LoginGuardLock::SCOPE_EMAIL)
+                            ->where('scope_key', $email);
+                    });
+
+                    $query->orWhere(function (Builder $q) use ($ip, $email): void {
+                        $q->where('scope_type', LoginGuardLock::SCOPE_PAIR)
+                            ->where('scope_key', $ip . '|' . $email);
+                    });
+                }
+            });
     }
 
     /**
@@ -119,8 +157,9 @@ final class LoginGuardService
         $cutoff = $now->copy()->subSeconds($windowSeconds);
 
         // Aggregate sums count attempts of all rows of the same IP (or same email)
-        // whose window is still active.
-        $lockIds = [];
+        // whose window is still active. A threshold breach locks the *scope*
+        // (the IP itself, or the email itself) — never individual attempt rows.
+        $lockScopes = [];
 
         if ($trackIp) {
             $ipAttempts = (int) LoginAttempt::query()
@@ -129,7 +168,7 @@ final class LoginGuardService
                 ->sum('attempts');
 
             if ($ipAttempts >= $maxAttempts) {
-                $lockIds = array_merge($lockIds, LoginAttempt::query()->where('ip', $ip)->pluck('id')->all());
+                $lockScopes[] = [LoginGuardLock::SCOPE_IP, $ip];
             }
         }
 
@@ -140,76 +179,109 @@ final class LoginGuardService
                 ->sum('attempts');
 
             if ($emailAttempts >= $maxAttempts) {
-                $lockIds = array_merge($lockIds, LoginAttempt::query()->where('email', $email)->pluck('id')->all());
+                $lockScopes[] = [LoginGuardLock::SCOPE_EMAIL, $email];
             }
         }
 
         if (! $trackIp && ! $trackEmail && $attempts >= $maxAttempts) {
-            $lockIds[] = $row->getKey();
+            // Per-pair semantics: lock the exact (ip, email) pair only, so other
+            // pairs sharing the IP or the email stay untouched.
+            $lockScopes = [
+                [LoginGuardLock::SCOPE_PAIR, $ip . '|' . $email],
+            ];
         }
 
-        if ($lockIds === []) {
+        if ($lockScopes === []) {
             return new LockoutResult(locked: false);
         }
 
-        // Apply the lock with escalation. Never shorten an existing lock; only bump
-        // lockout_count when the lock is actually (re)applied with a longer duration.
+        // Apply the locks with escalation. Never shorten an existing lock; only
+        // escalate when the lock is actually (re)applied with a longer duration.
         $locked = false;
         $lockoutRecords = [];
+        $maxLockedUntil = null;
 
-        LoginAttempt::query()
-            ->whereKey(array_unique($lockIds))
-            ->get()
-            ->each(function (LoginAttempt $target) use ($now, &$locked, &$lockoutRecords, $ip, $email): void {
-                // The escalation position is derived from the append-only history
-                // table, not from the (deletable) attempt row's counter — the
-                // cleanup command must never be able to reset the ladder.
-                $newCount = LockoutHistory::query()
-                    ->where('ip', $target->ip)
-                    ->where('email', $target->email)
-                    ->count() + 1;
+        foreach ($lockScopes as [$scopeType, $scopeKey]) {
+            /** @var LoginGuardLock|null $lock */
+            $lock = LoginGuardLock::query()
+                ->where('scope_type', $scopeType)
+                ->where('scope_key', $scopeKey)
+                ->first();
 
-                $lockedUntil = $now->copy()->addMinutes($this->durationForLockoutCount($newCount));
+            // The escalation position is derived from the append-only history
+            // table, not from a deletable counter — the cleanup command must
+            // never be able to reset the ladder. History rows record the scope
+            // that was actually locked (ip rows fill `ip`, email rows fill
+            // `email`, pair rows fill both), so matching on both columns is
+            // exact for every scope type.
+            [$historyIp, $historyEmail] = match ($scopeType) {
+                LoginGuardLock::SCOPE_IP => [$scopeKey, null],
+                LoginGuardLock::SCOPE_EMAIL => [null, $scopeKey],
+                default => explode('|', $scopeKey, 2),
+            };
 
-                if ($target->locked_until !== null && $target->locked_until->gte($lockedUntil)) {
-                    return;
-                }
+            $newCount = LockoutHistory::query()
+                ->where('ip', $historyIp)
+                ->where('email', $historyEmail)
+                ->count() + 1;
 
-                $target->lockout_count = $newCount;
-                $target->locked_until = $lockedUntil;
-                $target->save();
+            $durationMinutes = $this->durationForLockoutCount($newCount);
+            $lockedUntil = $now->copy()->addMinutes($durationMinutes);
 
-                $lockoutRecords[] = [
-                    'ip' => $target->ip,
-                    'email' => $target->email,
-                    'locked_at' => $now,
-                    'locked_until' => $lockedUntil,
-                    'lockout_count' => $newCount,
-                    'duration_minutes' => $this->durationForLockoutCount($newCount),
-                    'triggered_by_ip' => $ip,
-                    'triggered_by_email' => $email,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
+            if ($lock !== null && $lock->locked_until->gte($lockedUntil)) {
+                continue;
+            }
 
-                $locked = true;
-            });
+            LoginGuardLock::query()->updateOrCreate(
+                ['scope_type' => $scopeType, 'scope_key' => $scopeKey],
+                ['locked_until' => $lockedUntil, 'escalation_count' => $newCount],
+            );
+
+            $lockoutRecords[] = [
+                'ip' => $scopeType === LoginGuardLock::SCOPE_EMAIL ? null : ($scopeType === LoginGuardLock::SCOPE_PAIR ? explode('|', $scopeKey, 2)[0] : $scopeKey),
+                'email' => $scopeType === LoginGuardLock::SCOPE_IP ? null : ($scopeType === LoginGuardLock::SCOPE_PAIR ? explode('|', $scopeKey, 2)[1] : $scopeKey),
+                'locked_at' => $now,
+                'locked_until' => $lockedUntil,
+                'lockout_count' => $newCount,
+                'duration_minutes' => $durationMinutes,
+                'triggered_by_ip' => $ip,
+                'triggered_by_email' => $email,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            $locked = true;
+
+            if ($maxLockedUntil === null || $lockedUntil->gt($maxLockedUntil)) {
+                $maxLockedUntil = $lockedUntil;
+            }
+        }
 
         if ($lockoutRecords !== []) {
             // Escalation history lives in its own append-only table so the
             // attempts cleanup command can delete stale rows without ever
             // resetting the escalation ladder.
             LockoutHistory::query()->insert($lockoutRecords);
+
+            foreach ($lockoutRecords as $record) {
+                SecurityEvent::record(
+                    SecurityEvent::TYPE_LOCKOUT_STARTED,
+                    $record['triggered_by_ip'],
+                    $record['triggered_by_email'],
+                    null,
+                    null,
+                    null,
+                    ['locked_until' => $record['locked_until']->toDateTimeString(), 'duration_minutes' => $record['duration_minutes']],
+                );
+            }
         }
 
         if (! $locked) {
             return new LockoutResult(locked: false);
         }
 
-        // The recorded row always belongs to the lock set (its own IP/email triggered it).
-        $fresh = LoginAttempt::query()->find($row->getKey());
-        $seconds = ($fresh !== null && $fresh->locked_until !== null)
-            ? (int) $now->diffInSeconds($fresh->locked_until)
+        $seconds = $maxLockedUntil !== null
+            ? (int) $now->diffInSeconds($maxLockedUntil)
             : 0;
         $seconds = max(0, $seconds);
 
@@ -243,12 +315,13 @@ final class LoginGuardService
     }
 
     /**
-     * Successful login: clear counters and any lock for this specific (ip, email) row.
+     * Successful login: clear the failed-attempt counters of this (ip, email) pair
+     * and lift the EMAIL lock for that address only.
      *
-     * The row is keyed on the (ip, email) pair, so a successful login must only reset
-     * that one pair. Matching by IP alone (or by IP *or* email) would wipe the failed
-     * attempts of every other account sharing the IP — e.g. every account behind a NAT,
-     * or every local account on 127.0.0.1.
+     * A successful login proves the credentials are valid, so the email scope's
+     * lock is lifted (forgiving the legitimate owner). The IP scope is left
+     * alone: one valid login from a shared IP must not unlock the whole IP,
+     * which would let attackers behind the same NAT keep brute-forcing.
      */
     public function resetForSuccess(string $ip, ?string $email): void
     {
@@ -265,14 +338,17 @@ final class LoginGuardService
         $query->update([
             'attempts' => 0,
             'lockout_count' => 0,
-            'locked_until' => null,
             'last_attempt_at' => null,
         ]);
+
+        if (filled($email)) {
+            $this->releaseLock(LoginGuardLock::SCOPE_EMAIL, $email);
+        }
     }
 
     /**
-     * Record a successful login: stamp the success counter and clear the failed
-     * attempts / lockout state for this (ip, email) row.
+     * Record a successful login: stamp the success counter, clear the failed
+     * attempts for this (ip, email) row and lift the EMAIL lock.
      */
     public function recordSuccess(string $ip, string $email): void
     {
@@ -286,11 +362,12 @@ final class LoginGuardService
         $row->forceFill([
             'attempts' => 0,
             'lockout_count' => 0,
-            'locked_until' => null,
             'last_attempt_at' => null,
             'success_count' => (int) $row->success_count + 1,
             'last_success_at' => Carbon::now(),
         ])->save();
+
+        $this->releaseLock(LoginGuardLock::SCOPE_EMAIL, $email);
     }
 
     /**
@@ -514,13 +591,12 @@ final class LoginGuardService
     }
 
     /**
-     * Self-service unlock: clear the EMAIL lock for every row of the given address.
+     * Self-service unlock: lift the EMAIL lock of the given address.
      *
-     * Only `locked_until` is cleared; `attempts` and `lockout_count` are kept so a
-     * repeat offender (or an attacker re-triggering the lock) still escalates to
-     * the next duration. IP locks are deliberately not touched — otherwise an
-     * attacker could unlock their own IP by triggering a lock on an email they
-     * control and clicking the link.
+     * Only the email scope is released; the IP scope is deliberately not touched —
+     * otherwise an attacker could unlock their own IP by triggering a lock on an
+     * email they control and clicking the link. Counters and escalation history
+     * are kept so a repeat offender still escalates.
      */
     public function unlockEmail(string $email): int
     {
@@ -530,10 +606,19 @@ final class LoginGuardService
             return 0;
         }
 
-        return LoginAttempt::query()
-            ->where('email', $email)
-            ->whereNotNull('locked_until')
-            ->update(['locked_until' => null]);
+        return $this->releaseLock(LoginGuardLock::SCOPE_EMAIL, $email);
+    }
+
+    /**
+     * Lift a single lock scope. Returns 1 when a lock was released, 0 when there
+     * was no lock for the scope.
+     */
+    public function releaseLock(string $scopeType, string $scopeKey): int
+    {
+        return LoginGuardLock::query()
+            ->where('scope_type', $scopeType)
+            ->where('scope_key', $scopeKey)
+            ->delete();
     }
 
     /**
@@ -553,31 +638,5 @@ final class LoginGuardService
     private function unlockTokenKey(string $signature): string
     {
         return 'filament-loginguard:unlock:' . sha1($signature);
-    }
-
-    /**
-     * Rows that "represent" the given IP/email according to the tracking toggles.
-     */
-    private function matchingRowsQuery(string $ip, ?string $email): Builder
-    {
-        $trackIp = (bool) config('filament-loginguard.lockout.tracking.per_ip', true);
-        $trackEmail = (bool) config('filament-loginguard.lockout.tracking.per_email', true);
-
-        return LoginAttempt::query()->where(function (Builder $query) use ($ip, $email, $trackIp, $trackEmail): void {
-            // Per-pair semantics when both aggregates are off: only the exact (ip, email) row counts.
-            if (! $trackIp && ! $trackEmail) {
-                $query->where('ip', $ip)->where('email', $email ?? '');
-
-                return;
-            }
-
-            if ($trackIp) {
-                $query->orWhere('ip', $ip);
-            }
-
-            if ($trackEmail && filled($email)) {
-                $query->orWhere('email', $email);
-            }
-        });
     }
 }

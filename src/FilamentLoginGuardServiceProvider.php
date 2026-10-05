@@ -188,6 +188,8 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
             'update_filament_loginguard_attempts_table_add_success',
             'update_filament_loginguard_attempts_table_add_composite_indexes',
             'update_filament_loginguard_attempts_table_add_window_started_at',
+            'create_filament_loginguard_locks_table',
+            'create_filament_loginguard_events_table',
             'create_filament_loginguard_known_devices_table',
             'create_filament_loginguard_lockout_histories_table',
         ];

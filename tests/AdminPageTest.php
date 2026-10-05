@@ -7,7 +7,9 @@ use Filament\Widgets\WidgetConfiguration;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Livewire;
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
+use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
 use SolutionForest\FilamentLoginGuard\Pages\LoginGuard;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestCluster;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestUser;
@@ -49,11 +51,17 @@ it('renders the blocked attempts page', function () {
 });
 
 it('shows the remaining lock time as a relative string', function () {
-    LoginAttempt::factory()->create([
+    $record = LoginAttempt::factory()->create([
         'ip' => '1.2.3.4',
         'email' => 'a@example.com',
         'attempts' => 3,
+    ]);
+
+    LoginGuardLock::query()->create([
+        'scope_type' => 'ip',
+        'scope_key' => '1.2.3.4',
         'locked_until' => now()->addMinutes(15),
+        'escalation_count' => 1,
     ]);
 
     Livewire::test(LoginGuard::class)
@@ -86,20 +94,20 @@ it('parses user agents into device names', function () {
 });
 
 it('can unblock a record', function () {
-    $record = LoginAttempt::factory()->locked()->create();
+    $record = LoginAttempt::factory()->locked(lockedUntil: now()->addMinutes(15))->create();
 
     Livewire::test(LoginGuard::class)
         ->callTableAction('unblock', $record);
 
-    $record->refresh();
+    $service = app(LoginGuardService::class);
 
-    expect($record->isLocked())->toBeFalse()
-        ->and($record->attempts)->toBe(0)
-        ->and($record->lockout_count)->toBe(0);
+    expect($service->isLocked($record->ip, $record->email))->toBeFalse()
+        ->and(LoginGuardLock::query()->where('scope_type', 'ip')->where('scope_key', $record->ip)->exists())->toBeFalse()
+        ->and(LoginGuardLock::query()->where('scope_type', 'email')->where('scope_key', $record->email)->exists())->toBeFalse();
 });
 
 it('only offers unblock for locked records', function () {
-    $locked = LoginAttempt::factory()->locked()->create();
+    $locked = LoginAttempt::factory()->locked(lockedUntil: now()->addMinutes(15))->create();
     $tracked = LoginAttempt::factory()->create(['attempts' => 2]);
 
     Livewire::test(LoginGuard::class)

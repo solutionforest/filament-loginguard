@@ -14,7 +14,7 @@ it('asserts the failed attempts count for an email', function () {
 });
 
 it('asserts an email is locked out', function () {
-    LoginAttempt::factory()->locked()->create(['email' => 'a@example.com']);
+    LoginAttempt::factory()->locked(ip: '1.2.3.4', email: 'a@example.com', lockedUntil: now()->addMinutes(15))->create();
     LoginAttempt::factory()->create(['email' => 'b@example.com', 'attempts' => 2]);
 
     Livewire::test(TestLivewireComponent::class)

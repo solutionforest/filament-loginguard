@@ -10,8 +10,8 @@ return new class extends Migration
     {
         Schema::create('filament_loginguard_lockout_histories', function (Blueprint $table) {
             $table->id();
-            $table->string('ip', 45);
-            $table->string('email');
+            $table->string('ip', 45)->nullable();
+            $table->string('email')->nullable();
             $table->timestamp('locked_at');
             $table->timestamp('locked_until');
             $table->unsignedInteger('lockout_count');

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Testing\Assert;
 use Livewire\Features\SupportTesting\Testable;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
 
 /**
  * @mixin Testable
@@ -34,11 +35,14 @@ class TestsFilamentLoginGuard
     public function assertLoginGuardLocked(): Closure
     {
         return function (string $email, ?string $ip = null): static {
-            $locked = LoginAttempt::query()
-                ->where('email', $email)
-                ->when($ip !== null, fn (Builder $query): Builder => $query->where('ip', $ip))
-                ->where('locked_until', '>', now())
-                ->exists();
+            $locked = LoginGuardLock::activeQuery()
+                ->where('scope_type', LoginGuardLock::SCOPE_EMAIL)
+                ->where('scope_key', $email)
+                ->exists()
+                || ($ip !== null && LoginGuardLock::activeQuery()
+                    ->where('scope_type', LoginGuardLock::SCOPE_IP)
+                    ->where('scope_key', $ip)
+                    ->exists());
 
             Assert::assertTrue(
                 $locked,
@@ -52,11 +56,14 @@ class TestsFilamentLoginGuard
     public function assertLoginGuardNotLocked(): Closure
     {
         return function (string $email, ?string $ip = null): static {
-            $locked = LoginAttempt::query()
-                ->where('email', $email)
-                ->when($ip !== null, fn (Builder $query): Builder => $query->where('ip', $ip))
-                ->where('locked_until', '>', now())
-                ->exists();
+            $locked = LoginGuardLock::activeQuery()
+                ->where('scope_type', LoginGuardLock::SCOPE_EMAIL)
+                ->where('scope_key', $email)
+                ->exists()
+                || ($ip !== null && LoginGuardLock::activeQuery()
+                    ->where('scope_type', LoginGuardLock::SCOPE_IP)
+                    ->where('scope_key', $ip)
+                    ->exists());
 
             Assert::assertFalse(
                 $locked,

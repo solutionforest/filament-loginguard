@@ -9,7 +9,9 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use SolutionForest\FilamentLoginGuard\Events\LoginLockedOut;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
+use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 use SolutionForest\FilamentLoginGuard\Support\IpAddress;
+use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
 
 class AuthenticationListener
 {
@@ -60,6 +62,15 @@ class AuthenticationListener
             return; // never count/extend during an active lock
         }
 
+        SecurityEvent::record(
+            SecurityEvent::TYPE_LOGIN_FAILED,
+            $ip,
+            $email,
+            null,
+            $event->guard,
+            ParsesUserAgent::parseDeviceName(request()->userAgent()),
+        );
+
         $result = $this->service->recordFailure($ip, $email, request()->userAgent());
 
         if (! $result->locked) {
@@ -102,6 +113,9 @@ class AuthenticationListener
             }
         }
 
+        $userId = $event->user->getAuthIdentifier();
+        $userIdInt = is_numeric($userId) && (int) $userId > 0 ? (int) $userId : null;
+
         if ($guardTracked) {
             if ($email !== null) {
                 $this->service->recordSuccess($ip, $email);
@@ -110,13 +124,18 @@ class AuthenticationListener
             }
         }
 
-        if ($sessionsEnabled) {
-            $userId = $event->user->getAuthIdentifier();
+        SecurityEvent::record(
+            SecurityEvent::TYPE_LOGIN_SUCCEEDED,
+            $ip,
+            $email,
+            $userIdInt,
+            $event->guard,
+            ParsesUserAgent::parseDeviceName(request()->userAgent()),
+        );
 
-            if (is_numeric($userId) && (int) $userId > 0) {
-                $this->service->recordDevice((int) $userId, request()->userAgent(), $email);
-                $this->service->enforceConcurrentLimit((int) $userId);
-            }
+        if ($sessionsEnabled && $userIdInt !== null) {
+            $this->service->recordDevice($userIdInt, request()->userAgent(), $email);
+            $this->service->enforceConcurrentLimit($userIdInt);
         }
     }
 

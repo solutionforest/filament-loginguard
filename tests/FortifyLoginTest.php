@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Hash;
+use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use Workbench\Database\Factories\UserFactory;
 
@@ -42,7 +43,7 @@ it('locks out through the native Fortify login', function () {
 
     $row = LoginAttempt::query()->where('email', 'admin@example.com')->sole();
 
-    expect($row->isLocked())->toBeTrue();
+    expect(app(LoginGuardService::class)->isLocked($row->ip, $row->email))->toBeTrue();
 
     // A further attempt is rejected by the lockout before any credential work.
     $this->post('/login', [

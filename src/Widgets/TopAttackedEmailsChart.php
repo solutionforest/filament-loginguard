@@ -3,7 +3,7 @@
 namespace SolutionForest\FilamentLoginGuard\Widgets;
 
 use Filament\Widgets\ChartWidget;
-use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 
 class TopAttackedEmailsChart extends ChartWidget
 {
@@ -26,20 +26,23 @@ class TopAttackedEmailsChart extends ChartWidget
      */
     protected function getData(): array
     {
-        // Windowed failures per email: only attempts inside an active window
-        // count, matching the lockout semantics.
-        $top = LoginAttempt::query()
-            ->where('window_started_at', '>=', now()->subDay()->startOfDay())
-            ->where('attempts', '>', 0)
-            ->orderByDesc('attempts')
+        // True 24h failures per email from the event log, aggregated across all
+        // source IPs — a victim hit from three IPs shows as one combined total.
+        $top = SecurityEvent::query()
+            ->where('type', SecurityEvent::TYPE_LOGIN_FAILED)
+            ->where('occurred_at', '>=', now()->subDay())
+            ->whereNotNull('email')
+            ->selectRaw('email, count(*) as aggregate')
+            ->groupBy('email')
+            ->orderByDesc('aggregate')
             ->limit(10)
-            ->get(['email', 'attempts']);
+            ->get();
 
         return [
             'datasets' => [
                 [
                     'label' => (string) __('filament-loginguard::loginguard.charts.top_emails.dataset'),
-                    'data' => $top->pluck('attempts')->all(),
+                    'data' => $top->pluck('aggregate')->all(),
                     'backgroundColor' => '#f97316',
                     'borderRadius' => 4,
                     'maxBarThickness' => 28,

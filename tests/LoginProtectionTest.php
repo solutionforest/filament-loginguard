@@ -11,6 +11,7 @@ use SolutionForest\FilamentLoginGuard\Events\LoginLockedOut;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LockoutHistory;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
+use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestUser;
 
 beforeEach(function () {
@@ -67,15 +68,17 @@ it('locks out when the max attempts are reached', function () {
     ($this->failed)();
     ($this->failed)();
 
-    expect(LoginAttempt::query()->sole()->isLocked())->toBeFalse();
+    expect(app(LoginGuardService::class)->isLocked('1.2.3.4', 'a@example.com'))->toBeFalse();
 
     ($this->failed)();
 
-    $row = LoginAttempt::query()->sole();
+    $service = app(LoginGuardService::class);
 
-    expect($row->isLocked())->toBeTrue()
-        ->and($row->lockout_count)->toBe(1)
-        ->and($row->locked_until->equalTo(now()->addMinutes(15)))->toBeTrue();
+    expect($service->isLocked('1.2.3.4', 'a@example.com'))->toBeTrue()
+        ->and(LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_IP)->where('scope_key', '1.2.3.4')->exists())->toBeTrue()
+        ->and(LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_EMAIL)->where('scope_key', 'a@example.com')->exists())->toBeTrue()
+        ->and(LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_IP)->where('scope_key', '1.2.3.4')->first()->locked_until->equalTo(now()->addMinutes(15)))->toBeTrue()
+        ->and($service->lockFor('1.2.3.4', 'a@example.com')->equalTo(now()->addMinutes(15)))->toBeTrue();
 });
 
 it('rejects locked keys before credential work', function () {
@@ -101,7 +104,7 @@ it('escalates lockout durations', function () {
         ($this->failed)();
     }
 
-    expect(LoginAttempt::query()->sole()->lockout_count)->toBe(1);
+    expect(LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_IP)->where('scope_key', '1.2.3.4')->first()->escalation_count)->toBe(1);
 
     // Second lockout: 24 hours.
     Carbon::setTestNow(now()->addMinutes(16));
@@ -110,10 +113,7 @@ it('escalates lockout durations', function () {
         ($this->failed)();
     }
 
-    $row = LoginAttempt::query()->sole();
-
-    expect($row->lockout_count)->toBe(2)
-        ->and($row->locked_until->equalTo(now()->addHours(24)))->toBeTrue();
+    expect(LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_IP)->where('scope_key', '1.2.3.4')->first()->locked_until->equalTo(now()->addHours(24)))->toBeTrue();
 
     // Third lockout: 72 hours.
     Carbon::setTestNow(now()->addDay()->addMinutes(1));
@@ -122,10 +122,7 @@ it('escalates lockout durations', function () {
         ($this->failed)();
     }
 
-    $row = LoginAttempt::query()->sole();
-
-    expect($row->lockout_count)->toBe(3)
-        ->and($row->locked_until->equalTo(now()->addHours(72)))->toBeTrue();
+    expect(LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_IP)->where('scope_key', '1.2.3.4')->first()->locked_until->equalTo(now()->addHours(72)))->toBeTrue();
 });
 
 it('computes escalation durations and caps at the last ban', function () {
@@ -171,8 +168,10 @@ it('locks an ip when aggregate attempts across emails reach the threshold', func
 
     $rows = LoginAttempt::query()->get();
 
+    // One IP-scope lock covers all three rows.
     expect($rows)->toHaveCount(3)
-        ->and($rows->every(fn (LoginAttempt $row): bool => $row->isLocked()))->toBeTrue();
+        ->and(LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_IP)->where('scope_key', '1.2.3.4')->where('locked_until', '>', now())->exists())->toBeTrue()
+        ->and(LoginAttempt::query()->get()->every(fn (LoginAttempt $row): bool => app(LoginGuardService::class)->isLocked($row->ip, $row->email)))->toBeTrue();
 });
 
 it('locks an email when aggregate attempts across ips reach the threshold', function () {
@@ -185,8 +184,10 @@ it('locks an email when aggregate attempts across ips reach the threshold', func
 
     $rows = LoginAttempt::query()->get();
 
+    // One email-scope lock covers all three rows.
     expect($rows)->toHaveCount(3)
-        ->and($rows->every(fn (LoginAttempt $row): bool => $row->isLocked()))->toBeTrue();
+        ->and(LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_EMAIL)->where('scope_key', 'a@example.com')->where('locked_until', '>', now())->exists())->toBeTrue()
+        ->and(LoginAttempt::query()->get()->every(fn (LoginAttempt $row): bool => app(LoginGuardService::class)->isLocked($row->ip, $row->email)))->toBeTrue();
 });
 
 it('treats an IPv4-mapped IPv6 address as the same key as its IPv4 form', function () {
@@ -200,7 +201,7 @@ it('treats an IPv4-mapped IPv6 address as the same key as its IPv4 form', functi
 
     expect(LoginAttempt::query()->count())->toBe(1)
         ->and(LoginAttempt::query()->sole()->ip)->toBe('1.2.3.4')
-        ->and(LoginAttempt::query()->sole()->isLocked())->toBeTrue();
+        ->and(app(LoginGuardService::class)->isLocked('1.2.3.4', 'a@example.com'))->toBeTrue();
 });
 
 it('tracks exact pairs only when both aggregates are off', function () {
@@ -212,16 +213,17 @@ it('tracks exact pairs only when both aggregates are off', function () {
     ($this->failed)('b@example.com');
     ($this->failed)('c@example.com');
 
-    expect(LoginAttempt::query()->where('locked_until', '>', now())->count())->toBe(0);
+    // One failure per pair: nothing reaches max_attempts, no locks exist.
+    expect(LoginAttempt::query()->count())->toBe(3)
+        ->and(LoginGuardLock::query()->count())->toBe(0);
 
     ($this->failed)('a@example.com');
     ($this->failed)('a@example.com');
 
-    $a = LoginAttempt::query()->where('email', 'a@example.com')->sole();
-    $b = LoginAttempt::query()->where('email', 'b@example.com')->sole();
+    $service = app(LoginGuardService::class);
 
-    expect($a->isLocked())->toBeTrue()
-        ->and($b->isLocked())->toBeFalse();
+    expect($service->isLocked('1.2.3.4', 'a@example.com'))->toBeTrue()
+        ->and($service->isLocked('1.2.3.4', 'b@example.com'))->toBeFalse();
 });
 
 it('decays attempts outside the window', function () {
@@ -292,13 +294,18 @@ it('records an escalation history entry for every applied lockout', function () 
     ($this->failed)();
     ($this->failed)();
 
-    $history = LockoutHistory::query()->sole();
+    // Both scopes triggered by this pair get a history entry.
+    $ipHistory = LockoutHistory::query()->where('ip', '1.2.3.4')->sole();
+    $emailHistory = LockoutHistory::query()->where('email', 'a@example.com')->sole();
 
-    expect($history->ip)->toBe('1.2.3.4')
-        ->and($history->email)->toBe('a@example.com')
-        ->and($history->lockout_count)->toBe(1)
-        ->and($history->duration_minutes)->toBe(15)
-        ->and($history->locked_until->equalTo(now()->addMinutes(15)))->toBeTrue();
+    expect($ipHistory->ip)->toBe('1.2.3.4')
+        ->and($ipHistory->email)->toBeNull()
+        ->and($ipHistory->lockout_count)->toBe(1)
+        ->and($ipHistory->duration_minutes)->toBe(15)
+        ->and($ipHistory->locked_until->equalTo(now()->addMinutes(15)))->toBeTrue()
+        ->and($emailHistory->email)->toBe('a@example.com')
+        ->and($emailHistory->ip)->toBeNull()
+        ->and($emailHistory->lockout_count)->toBe(1);
 });
 
 it('increments the attempt counter atomically', function () {
@@ -325,16 +332,16 @@ it('does not extend an active lock', function () {
     ($this->failed)();
     ($this->failed)();
 
-    $originalLockedUntil = LoginAttempt::query()->sole()->locked_until;
+    $originalLockedUntil = LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_IP)->where('scope_key', '1.2.3.4')->sole()->locked_until;
 
     Carbon::setTestNow(now()->addMinutes(5));
 
     ($this->failed)();
 
-    $row = LoginAttempt::query()->sole();
-
-    expect($row->attempts)->toBe(2)
-        ->and($row->locked_until->equalTo($originalLockedUntil))->toBeTrue();
+    // Attempts during an active lock are never counted (the listener skips
+    // them), and the lock expiry does not move.
+    expect(LoginAttempt::query()->sole()->attempts)->toBe(2)
+        ->and(LoginGuardLock::query()->where('scope_type', LoginGuardLock::SCOPE_IP)->where('scope_key', '1.2.3.4')->sole()->locked_until->equalTo($originalLockedUntil))->toBeTrue();
 });
 
 it('resets counters on successful login', function () {

@@ -48,6 +48,9 @@ class LoginAttempt extends Model
 
     public function isLocked(): bool
     {
+        // The current lock state lives in LoginGuardLock (scoped per IP/email);
+        // this legacy accessor reports the old per-row column. Kept for
+        // backwards compatibility with third-party code.
         return $this->locked_until !== null && $this->locked_until->isFuture();
     }
 
