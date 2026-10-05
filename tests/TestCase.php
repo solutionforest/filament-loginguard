@@ -66,6 +66,12 @@ class TestCase extends Orchestra
     {
         $app['config']->set('database.default', 'testing');
         $app['config']->set('app.key', 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
+
+        // Filament's export jobs use Bus::batch(), which stores batch records in
+        // the connection from queue.batching.database — the sqlite connection by
+        // default, which requires a physical database.sqlite file that does not
+        // exist in CI. Point it at the in-memory testing connection instead.
+        $app['config']->set('queue.batching.database', 'testing');
     }
 
     protected function defineDatabaseMigrations(): void
