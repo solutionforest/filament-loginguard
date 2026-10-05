@@ -183,41 +183,41 @@ it('never shortens a stronger v0.6 scoped lock during the backfill', function ()
     // v0.6.0 → v0.6.1: a real scoped lock already exists (24h, escalated
     // twice) AND a legacy attempt row still carries a shorter lock. The
     // backfill must keep the stronger state.
+    $legacyExpiry = now()->addMinutes(10)->startOfSecond();
+    $scopedExpiry = now()->addDay()->startOfSecond();
+
     DB::table('filament_loginguard_attempts')->insert([
-        'ip' => '198.51.100.7',
         'email' => 'upgraded@example.com',
         'attempts' => 10,
         'lockout_count' => 2,
-        'locked_until' => now()->addMinutes(10), // legacy: expires in 10 minutes
+        'locked_until' => $legacyExpiry, // legacy: expires in 10 minutes
         'last_attempt_at' => now(),
         'created_at' => now(),
         'updated_at' => now(),
+        'ip' => '198.51.100.7',
     ]);
 
     LoginGuardLock::query()->create([
         'scope_type' => 'ip',
         'scope_key' => '198.51.100.7',
-        'locked_until' => now()->addDay(), // v0.6 scoped: expires in 24 hours
+        'locked_until' => $scopedExpiry, // v0.6 scoped: expires in 24 hours
         'escalation_count' => 2,
     ]);
 
     $upgrade = require __DIR__ . '/../database/migrations/update_filament_loginguard_upgrade_to_scoped_locks.php';
     $upgrade->up();
 
-    $expectedExpiry = now()->addDay()->startOfSecond();
-
     $ipLock = LoginGuardLock::query()->where('scope_type', 'ip')->where('scope_key', '198.51.100.7')->sole();
 
     // locked_until kept the LONGER of the two; escalation kept the HIGHER.
-    expect($ipLock->locked_until->equalTo($expectedExpiry))->toBeTrue()
+    expect($ipLock->locked_until->equalTo($scopedExpiry))->toBeTrue()
         ->and($ipLock->escalation_count)->toBe(2)
         ->and(app(LoginGuardService::class)->isLocked('198.51.100.7', 'upgraded@example.com'))->toBeTrue();
 
-    // The email scope had no v0.6 lock, so it gets the legacy state seeded
-    // (startOfSecond: the seeded datetime has second precision).
+    // The email scope had no v0.6 lock, so it gets the legacy state seeded.
     $emailLock = LoginGuardLock::query()->where('scope_type', 'email')->where('scope_key', 'upgraded@example.com')->sole();
 
-    expect($emailLock->locked_until->equalTo(now()->addMinutes(10)->startOfSecond()))->toBeTrue();
+    expect($emailLock->locked_until->equalTo($legacyExpiry))->toBeTrue();
 });
 
 it('releases pair locks when an admin unblocks and accounts for them in filter and cleanup', function () {
