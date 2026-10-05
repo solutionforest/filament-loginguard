@@ -179,6 +179,47 @@ it('upgrades cleanly from a v0.5 schema', function () {
         ->and($unlocked->pluck('metadata.reason')->unique()->values()->all())->toBe(['admin_unblock']);
 });
 
+it('never shortens a stronger v0.6 scoped lock during the backfill', function () {
+    // v0.6.0 → v0.6.1: a real scoped lock already exists (24h, escalated
+    // twice) AND a legacy attempt row still carries a shorter lock. The
+    // backfill must keep the stronger state.
+    DB::table('filament_loginguard_attempts')->insert([
+        'ip' => '198.51.100.7',
+        'email' => 'upgraded@example.com',
+        'attempts' => 10,
+        'lockout_count' => 2,
+        'locked_until' => now()->addMinutes(10), // legacy: expires in 10 minutes
+        'last_attempt_at' => now(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    LoginGuardLock::query()->create([
+        'scope_type' => 'ip',
+        'scope_key' => '198.51.100.7',
+        'locked_until' => now()->addDay(), // v0.6 scoped: expires in 24 hours
+        'escalation_count' => 2,
+    ]);
+
+    $upgrade = require __DIR__ . '/../database/migrations/update_filament_loginguard_upgrade_to_scoped_locks.php';
+    $upgrade->up();
+
+    $expectedExpiry = now()->addDay()->startOfSecond();
+
+    $ipLock = LoginGuardLock::query()->where('scope_type', 'ip')->where('scope_key', '198.51.100.7')->sole();
+
+    // locked_until kept the LONGER of the two; escalation kept the HIGHER.
+    expect($ipLock->locked_until->equalTo($expectedExpiry))->toBeTrue()
+        ->and($ipLock->escalation_count)->toBe(2)
+        ->and(app(LoginGuardService::class)->isLocked('198.51.100.7', 'upgraded@example.com'))->toBeTrue();
+
+    // The email scope had no v0.6 lock, so it gets the legacy state seeded
+    // (startOfSecond: the seeded datetime has second precision).
+    $emailLock = LoginGuardLock::query()->where('scope_type', 'email')->where('scope_key', 'upgraded@example.com')->sole();
+
+    expect($emailLock->locked_until->equalTo(now()->addMinutes(10)->startOfSecond()))->toBeTrue();
+});
+
 it('releases pair locks when an admin unblocks and accounts for them in filter and cleanup', function () {
     config()->set('filament-loginguard.lockout.tracking.per_ip', false);
     config()->set('filament-loginguard.lockout.tracking.per_email', false);
@@ -256,10 +297,12 @@ it('accepts maximum-length emails and pair scope keys', function () {
     config()->set('filament-loginguard.lockout.tracking.per_ip', false);
     config()->set('filament-loginguard.lockout.tracking.per_email', false);
 
-    // 254 chars is the RFC-5321 maximum local+domain length.
-    $longEmail = str_repeat('a', 64) . '@' . str_repeat('b', 180) . '.example.com';
+    // Exactly 254 chars: the RFC-5321 maximum path length (64 local + 1 @ +
+    // 189 domain). MySQL stores attempts.email as VARCHAR(255) in strict
+    // mode, so anything longer than this cannot exist in a real database.
+    $longEmail = str_repeat('a', 64) . '@' . str_repeat('b', 177) . '.example.com';
 
-    expect(strlen($longEmail))->toBeGreaterThan(191);
+    expect(strlen($longEmail))->toBe(254);
 
     $service = app(LoginGuardService::class);
     $service->recordFailure('203.0.113.50', $longEmail, 'test');

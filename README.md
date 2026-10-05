@@ -162,7 +162,7 @@ The package hooks into Laravel's core auth events rather than any specific UI, s
 | --- | --- |
 | `Illuminate\Auth\Events\Attempting` | If the IP or email is currently locked out, a `ValidationException` with the lockout message is thrown before any credential work happens. |
 | `Illuminate\Auth\Events\Failed` | The failure is recorded for the (IP, email) pair. When the threshold is reached, the IP and/or email is locked out and admins are notified by email. |
-| `Illuminate\Auth\Events\Login` | A successful login clears all counters and locks for that IP and email. |
+| `Illuminate\Auth\Events\Login` | A successful login resets the failed-attempt counter for that `(IP, email)` pair and releases the email-scoped lock. IP-scoped locks remain in force so one valid login cannot unblock a shared or attacking IP. |
 
 Lockout semantics:
 
@@ -170,7 +170,7 @@ Lockout semantics:
 - With `tracking.per_ip` enabled, the **sum** of attempts across all emails from one IP triggers a lockout of that IP — rotating emails doesn't help attackers. `tracking.per_email` does the same across IPs for one email.
 - Lock durations **escalate**: the first lockout lasts `lockout.initial_minutes`; the 2nd, 3rd and subsequent lockouts use `lockout.escalation_hours` (e.g. `[24, 72, 168]` = 1 day, 3 days, 7 days+). The last value repeats for every further lockout. Escalation history is stored in its own append-only table, so cleaning up old attempt rows never resets the ladder.
 - Attempts are counted in a **fixed window**: failures only accumulate while they fall inside the same `attempts_window_minutes` window; the first failure after the window expires restarts the counter at zero. A slow drip just under the window length never reaches the threshold.
-- A lock is **never extended** by further attempts while it is active; a successful login resets everything (forgiving legitimate owners).
+- A lock is **never extended** by further attempts while it is active; a successful login resets the pair's counter and releases the email lock (forgiving the legitimate owner without unblocking the shared IP).
 - The lockout message is rendered in the Filament login form (`data.email` error key) and as a standard `email` validation error in non-Filament forms (redirect back for web requests, 422 for JSON).
 - Localhost (`127.0.0.1`, `::1`) is whitelisted by default.
 - **Behind a proxy/CDN?** Set `lockout.trusted_proxies` to your proxy IPs or CIDR ranges. When the immediate request IP matches one, the real client IP is read from `X-Forwarded-For` (walking right-to-left past trusted proxies, so clients cannot spoof it). Laravel's own TrustProxies middleware may already rewrite `request()->ip()` — prefer configuring it there if you use the standard mechanism.
@@ -237,6 +237,7 @@ return [
             'self_unlock' => [
                 'enabled' => false,        // mail a signed, single-use unlock link to the blocked address
                 'link_ttl_minutes' => 60,  // how long the unlock link stays valid
+                'queue' => false,          // false = sync; queue name string = queued
             ],
         ],
     ],

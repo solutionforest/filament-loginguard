@@ -41,6 +41,9 @@ Repairs the v0.5 → v0.6 schema/lock-state upgrade path. If you upgraded straig
 - **Breaking:** the `pages.attempts.stats_widget` config key now controls only the numeric stats widget; the new `pages.attempts.charts` key (default `true`) controls the charts, and the new `pages.attempts.export` / `pages.sessions.export` keys (default `true`) control the CSV export actions.
 - **Breaking:** lockout history rows are now scoped (`ip` or `email` set, the other null) instead of always carrying both values.
 
+> [!WARNING]
+> **Upgrade from v0.5.0:** v0.6.0 edited the already-released history migration instead of adding an alter migration, so databases that ran the v0.5 migrations kept NOT NULL history columns and never received the scoped schema. **Do not stop at v0.6.0 — upgrade straight to v0.6.1**, which ships the alter migration and backfills the locks table. Also note that existing v0.5 locks are not carried into v0.6.0's locks table until v0.6.1's backfill runs.
+
 ## v0.5.0 - 2026-09-28
 
 ### Added

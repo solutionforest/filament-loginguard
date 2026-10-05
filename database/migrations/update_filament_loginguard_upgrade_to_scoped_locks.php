@@ -38,23 +38,63 @@ return new class extends Migration
         //    the IP and the email dimension in one column — the old
         //    matchingRowsQuery() matched locked rows by `ip OR email`, so
         //    restoring the old enforcement means seeding both scopes.
+        //
+        //    The backfill must never WEAKEN an existing v0.6.0 scoped lock: a
+        //    v0.6.0 → v0.6.1 database may already hold longer, more escalated
+        //    scoped locks, so an existing row only ever takes the MAX of both
+        //    states (locked_until and escalation_count).
         $legacyLocks = DB::table('filament_loginguard_attempts')
             ->where('locked_until', '>', now())
-            ->get(['ip', 'email', 'locked_until']);
+            ->get(['ip', 'email', 'locked_until', 'lockout_count']);
 
         foreach ($legacyLocks as $legacy) {
             $expires = Carbon::parse($legacy->locked_until);
+            $escalation = max(0, (int) $legacy->lockout_count);
 
-            DB::table('filament_loginguard_locks')->updateOrInsert(
-                ['scope_type' => 'ip', 'scope_key' => $legacy->ip],
-                ['locked_until' => $expires, 'escalation_count' => 0, 'created_at' => now(), 'updated_at' => now()],
-            );
+            $this->upsertLegacyScope('ip', $legacy->ip, $expires, $escalation);
 
-            DB::table('filament_loginguard_locks')->updateOrInsert(
-                ['scope_type' => 'email', 'scope_key' => $legacy->email],
-                ['locked_until' => $expires, 'escalation_count' => 0, 'created_at' => now(), 'updated_at' => now()],
-            );
+            if (filled($legacy->email)) {
+                $this->upsertLegacyScope('email', $legacy->email, $expires, $escalation);
+            }
         }
+    }
+
+    /**
+     * Seed (or merge) a legacy lock into a scoped lock row without ever
+     * shortening an existing, stronger lock state.
+     */
+    private function upsertLegacyScope(string $scopeType, string $scopeKey, Carbon $expires, int $escalation): void
+    {
+        $existing = DB::table('filament_loginguard_locks')
+            ->where('scope_type', $scopeType)
+            ->where('scope_key', $scopeKey)
+            ->first();
+
+        if ($existing === null) {
+            DB::table('filament_loginguard_locks')->insert([
+                'scope_type' => $scopeType,
+                'scope_key' => $scopeKey,
+                'locked_until' => $expires,
+                'escalation_count' => $escalation,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return;
+        }
+
+        $lockedUntil = max(
+            Carbon::parse($existing->locked_until)->getTimestamp(),
+            $expires->getTimestamp(),
+        );
+
+        DB::table('filament_loginguard_locks')
+            ->where('id', $existing->id)
+            ->update([
+                'locked_until' => Carbon::createFromTimestamp($lockedUntil),
+                'escalation_count' => max((int) $existing->escalation_count, $escalation),
+                'updated_at' => now(),
+            ]);
     }
 
     public function down(): void

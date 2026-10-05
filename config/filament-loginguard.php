@@ -74,6 +74,8 @@ return [
                 'enabled' => false,
                 // How long the unlock link stays valid, in minutes.
                 'link_ttl_minutes' => 60,
+                // Queue name to send the unlock email on, or false to send synchronously.
+                'queue' => false,
             ],
         ],
     ],
