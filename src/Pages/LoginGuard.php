@@ -19,7 +19,6 @@ use Illuminate\Database\Eloquent\Collection;
 use SolutionForest\FilamentLoginGuard\Filament\Exports\LoginAttemptExporter;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
-use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
 use SolutionForest\FilamentLoginGuard\Support\AuthorizesPages;
 use SolutionForest\FilamentLoginGuard\Widgets\FailureTrendChart;
 use SolutionForest\FilamentLoginGuard\Widgets\LoginGuardStats;
@@ -177,7 +176,8 @@ class LoginGuard extends Page implements HasTable
                     ->query(function (Builder $query, array $data): Builder {
                         return match ($data['value']) {
                             'locked' => $query->where(function (Builder $q): void {
-                                // Blocked by either the row's IP lock or its email lock.
+                                // Blocked by the row's IP lock, its email lock,
+                                // or the exact-pair lock (per-pair tracking mode).
                                 $q->whereExists(function (\Illuminate\Database\Query\Builder $sub): void {
                                     $sub->selectRaw(1)
                                         ->from('filament_loginguard_locks')
@@ -190,6 +190,14 @@ class LoginGuard extends Page implements HasTable
                                         ->whereColumn('scope_key', 'filament_loginguard_attempts.email')
                                         ->where('scope_type', 'email')
                                         ->where('locked_until', '>', now());
+                                })->orWhereExists(function (\Illuminate\Database\Query\Builder $sub): void {
+                                    $sub->selectRaw(1)
+                                        ->from('filament_loginguard_locks')
+                                        ->where('scope_type', 'pair')
+                                        ->where('locked_until', '>', now())
+                                        ->whereRaw(
+                                            'scope_key = ' . app(LoginGuardService::class)->pairScopeExpression('filament_loginguard_attempts.ip', 'filament_loginguard_attempts.email'),
+                                        );
                                 });
                             }),
                             'tracked' => $query->where('attempts', '>', 0),
@@ -210,9 +218,7 @@ class LoginGuard extends Page implements HasTable
                             && AuthorizesPages::canUnblockAttempts();
                     })
                     ->action(function (LoginAttempt $record): void {
-                        $service = app(LoginGuardService::class);
-                        $service->releaseLock(LoginGuardLock::SCOPE_IP, $record->ip);
-                        $service->releaseLock(LoginGuardLock::SCOPE_EMAIL, $record->email);
+                        app(LoginGuardService::class)->releaseLocksForPair($record->ip, $record->email);
 
                         Notification::make()
                             ->title(__('filament-loginguard::loginguard.page.table.actions.unblocked'))
@@ -230,10 +236,7 @@ class LoginGuard extends Page implements HasTable
                     ->action(function (Collection $records): Collection {
                         $service = app(LoginGuardService::class);
 
-                        $records->each(function (LoginAttempt $record) use ($service): void {
-                            $service->releaseLock(LoginGuardLock::SCOPE_IP, $record->ip);
-                            $service->releaseLock(LoginGuardLock::SCOPE_EMAIL, $record->email);
-                        });
+                        $records->each(fn (LoginAttempt $record) => $service->releaseLocksForPair($record->ip, $record->email));
 
                         return $records;
                     }),

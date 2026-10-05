@@ -2,6 +2,23 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
+## v0.6.1 - 2026-10-05
+
+Repairs the v0.5 → v0.6 schema/lock-state upgrade path. If you upgraded straight from v0.5.0 to v0.6.0, this release is required: v0.6.0 edited already-released migrations, so upgraded databases kept the old NOT NULL history schema and never received backfilled locks.
+
+### Fixed
+
+- **P0:** `filament_loginguard_lockout_histories.ip/email` are now made nullable by a new alter migration. v0.6.0 edited the create migration instead of adding one, so v0.5 databases kept NOT NULL columns and the first scoped lockout insert would fail (500 on login). Released migrations are no longer modified; all paths (fresh, v0.5 → v0.6.1, v0.6.0 → v0.6.1) converge on the same schema.
+- **P0:** active v0.5 locks are backfilled into `filament_loginguard_locks` (both the IP and the email scope, preserving the old `ip OR email` enforcement semantics) instead of silently disappearing after the upgrade.
+- The escalation lookup is now scope-aware `MAX(lockout_count)` — IP scope reads `where('ip', $ip)`, email scope `where('email', $email)`, pair scope the exact pair. Pre-v0.6 history rows (with both columns filled) naturally count towards the IP and email ladders without synthetic backfill; escalation no longer resets after upgrading.
+- Admin unblock now releases the **pair** scope as well (`releaseLocksForPair()`); previously, in per-pair tracking mode, the pair lock survived the unblock while the UI reported success. The "Locked" filter and the attempts cleanup command also account for pair locks now, and the pair scope key is built with the concat operator native to the current database (CONCAT on MySQL/MariaDB).
+- `releaseLock()` accepts a reason (`self_unlock`, `admin_unblock`, `successful_login`) and records an `unlocked` security event with the scope metadata — but only when a lock row was actually deleted, so no-op releases never pollute the event log. `lockout_started` events now carry the scope too.
+- The locks table's `scope_key` is widened to 320 characters (emails can exceed 191; a pair key is up to 45 + 1 + 254) and `scope_type` to 16.
+
+### Changed
+
+- `recordFailure()` wraps window rollover, increment, threshold check and lock application in a transaction with a `lockForUpdate()` on the attempt row, closing the rollover race for the same (ip, email) pair. Cross-row aggregate races (two different emails from one IP failing simultaneously) are narrowed but not fully eliminated.
+
 ## v0.6.0 - 2026-10-05
 
 ### Added

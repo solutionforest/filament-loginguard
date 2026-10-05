@@ -192,6 +192,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
             'create_filament_loginguard_events_table',
             'create_filament_loginguard_known_devices_table',
             'create_filament_loginguard_lockout_histories_table',
+            'update_filament_loginguard_upgrade_to_scoped_locks',
         ];
     }
 }

@@ -10,8 +10,9 @@ return new class extends Migration
     {
         Schema::create('filament_loginguard_locks', function (Blueprint $table): void {
             $table->id();
-            // 'ip' or 'email' — locks are scoped per key so a self-unlock of the
-            // email scope can never clear an IP lock that shares the same row.
+            // 'ip', 'email' or 'pair' — locks are scoped per key so a self-unlock
+            // of the email scope can never clear an IP lock that shares the same
+            // attempt row.
             $table->string('scope_type');
             $table->string('scope_key', 191);
             $table->timestamp('locked_until');
