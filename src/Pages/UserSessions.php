@@ -163,6 +163,7 @@ class UserSessions extends Page implements HasTable
 
         return [
             ExportAction::make()
+                ->label(__('filament-loginguard::loginguard.export.action'))
                 ->exporter(UserSessionExporter::class),
         ];
     }

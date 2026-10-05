@@ -97,6 +97,7 @@ return [
         ],
     ],
     'export' => [
+        'action' => 'Export CSV',
         'completed' => 'Exported :count rows.',
         'failed' => ':count rows failed to export.',
     ],

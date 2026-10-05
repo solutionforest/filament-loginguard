@@ -130,11 +130,11 @@ it('exports user sessions with device and last active data', function () {
 it('offers the export action on both admin pages', function () {
     Livewire::test(LoginGuard::class)
         ->assertSuccessful()
-        ->assertSeeText(__('filament-actions::export.label', ['label' => 'login attempts']));
+        ->assertSeeText(__('filament-loginguard::loginguard.export.action'));
 
     Livewire::test(UserSessions::class)
         ->assertSuccessful()
-        ->assertSeeText(__('filament-actions::export.label', ['label' => 'user sessions']));
+        ->assertSeeText(__('filament-loginguard::loginguard.export.action'));
 });
 
 it('registers the export action as a page header action, not a table header action', function () {
@@ -152,11 +152,11 @@ it('hides the export action when disabled per page', function () {
 
     Livewire::test(LoginGuard::class)
         ->assertSuccessful()
-        ->assertDontSeeText(__('filament-actions::export.label', ['label' => 'login attempts']));
+        ->assertDontSeeText(__('filament-loginguard::loginguard.export.action'));
 
     Livewire::test(UserSessions::class)
         ->assertSuccessful()
-        ->assertDontSeeText(__('filament-actions::export.label', ['label' => 'user sessions']));
+        ->assertDontSeeText(__('filament-loginguard::loginguard.export.action'));
 });
 
 it('runs the attempts export end-to-end and writes the csv file', function () {
