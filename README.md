@@ -61,9 +61,9 @@ Enterprise-grade login security for Filament and Laravel — persistent brute-fo
 |-------------|---------|
 | PHP         | 8.3+    |
 | Laravel     | 11, 12 or 13 |
-| Filament    | 5.x (≥ 5.7.6, Livewire 4) |
+| Filament    | 5.x (≥ 5.8.2, Livewire 4) |
 
-> Earlier 5.x releases have known security advisories; require at least Filament 5.7.6.
+> Earlier 5.x releases have known security advisories; require at least Filament 5.8.2.
 
 <b>Table of Contents</b>
 

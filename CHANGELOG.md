@@ -18,6 +18,7 @@ All notable changes to `filament-loginguard` will be documented in this file.
 ### Changed
 
 - `sessions.new_device.*` config keys are **deprecated** (still honoured) — device identity and its notification now live under `devices.*`. The legacy fingerprint logic still runs alongside the token layer so v0.6.x behaviour is preserved.
+- **Breaking:** the minimum supported Filament version is now 5.8.2 (raised from 5.7.6). 5.7.6 became affected by security advisory `PKSA-cnr1-6g7k-bp3d` (MFA management actions missing password reauthentication); 5.8.2 is the first 5.x release without a known advisory.
 
 ## v0.6.1 - 2026-10-05
 
