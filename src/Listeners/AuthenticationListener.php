@@ -10,12 +10,16 @@ use Illuminate\Validation\ValidationException;
 use SolutionForest\FilamentLoginGuard\Events\LoginLockedOut;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
+use SolutionForest\FilamentLoginGuard\Services\DeviceManager;
 use SolutionForest\FilamentLoginGuard\Support\IpAddress;
 use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
 
 class AuthenticationListener
 {
-    public function __construct(protected LoginGuardService $service) {}
+    public function __construct(
+        protected LoginGuardService $service,
+        protected DeviceManager $deviceManager,
+    ) {}
 
     /**
      * Pre-check: throw before any credential work so locked keys are rejected fast
@@ -97,7 +101,7 @@ class AuthenticationListener
         $guardTracked = $this->service->isEnabled() && $this->shouldTrackGuard($event->guard);
         $sessionsEnabled = (bool) config('filament-loginguard.sessions.enabled', true);
 
-        if (! $guardTracked && ! $sessionsEnabled) {
+        if (! $guardTracked && ! $sessionsEnabled && ! (bool) config('filament-loginguard.devices.enabled', true)) {
             return;
         }
 
@@ -136,6 +140,25 @@ class AuthenticationListener
         if ($sessionsEnabled && $userIdInt !== null) {
             $this->service->recordDevice($userIdInt, request()->userAgent(), $email);
             $this->service->enforceConcurrentLimit($userIdInt);
+        }
+
+        // Device identity layer (My Devices): resolve-or-create the device from
+        // the opaque cookie token, then map this session onto it. Gated by
+        // `devices.enabled`; non-numeric identifiers (UUID/ULID users) still
+        // get device tracking via the string identifier column.
+        if ((bool) config('filament-loginguard.devices.enabled', true) && $userId !== null) {
+            [$device] = $this->deviceManager->resolveOrCreate(
+                $event->user,
+                $event->guard,
+                request()->userAgent(),
+                $ip,
+            );
+
+            $sessionId = app('session.store')->getId();
+
+            if (filled($sessionId)) {
+                $this->deviceManager->associateSession($device, $event->guard, $sessionId);
+            }
         }
     }
 

@@ -2,6 +2,23 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- **Device identity foundation (My Devices)**: a new opaque cookie-token device layer. Each successful login resolves (or creates) a device identity bound to `guard + user_type + user_identifier + token_hash` — the database only stores the SHA-256 hash of the cookie token, so two machines both reporting "Chrome on Windows" are two distinct devices. Supports integer ids, UUIDs and ULIDs (the identifier is a string) and multi-guard setups without collisions.
+- **My Devices page** (`pages.my_devices`): a self-service account-security page in the user menu. Devices are grouped by live-session state — **This device** (pinned on top, no destructive actions), **Other signed-in devices** (devices with live sessions), and a collapsible **Recently signed out** section — so a known device is never shown as online just because it was seen before. Each row shows a type-aware icon (desktop / mobile / tablet, falling back to a terminal icon for scripts and unrecognized clients), the device name, "Last active · IP", and a **View details** slide-over (client, browser/OS, first seen, last active, last IP, active-session count and the full user agent). Operations run through Filament Actions with confirmation modals: **Sign out** (secondary button, keeps recognition), **This isn't me** (danger, revokes sessions + identity) and **Forget device** (removes the identity) in a per-row menu, plus a **Sign out other sessions** header action that keeps the current session and all device recognitions. The query is always scoped server-side to the authenticated user; there is no user_id parameter anywhere.
+- **Device lifecycle semantics**: "Sign out" deletes the device's live sessions but keeps recognition; "Forget device" removes the identity so the next sign-in is a NEW device; "This isn't me" revokes all device sessions AND the identity — a revoked token can never silently become recognized again.
+- New device identity tables: `filament_loginguard_devices` and `filament_loginguard_device_sessions` (device↔session mapping; the Laravel sessions table is never modified).
+- New `DeviceManager` service (`resolveOrCreate`, `associateSession`, `signOutDevice`, `revoke`, `forget`, `signOutOthers`, `cleanup`), `filament-loginguard:cleanup-devices` command, `devices.*` config section (cookie, retention_days, max_devices_per_user, notifications) and `pages.my_devices.*` config section.
+- New security event types: `device_registered`, `device_seen`, `device_forgotten`, `device_revoked`, `session_revoked_by_user`, `sessions_revoked_others`.
+- `NewDeviceLoginNotification` now links to the My Devices page.
+- Scoped Tailwind stylesheet for the My Devices page, compiled from `resources/css/my-devices.css` and registered via `FilamentAsset` (`npm run build:css`) so the page is styled in any host app — no reliance on a custom panel theme or Tailwind CDN.
+
+### Changed
+
+- `sessions.new_device.*` config keys are **deprecated** (still honoured) — device identity and its notification now live under `devices.*`. The legacy fingerprint logic still runs alongside the token layer so v0.6.x behaviour is preserved.
+
 ## v0.6.1 - 2026-10-05
 
 Repairs the v0.5 → v0.6 schema/lock-state upgrade path. If you upgraded straight from v0.5.0 to v0.6.0, this release is required: v0.6.0 edited already-released migrations, so upgraded databases kept the old NOT NULL history schema and never received backfilled locks.

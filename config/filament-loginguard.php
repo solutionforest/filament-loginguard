@@ -103,6 +103,10 @@ return [
         'concurrent_limit' => null,
         // Sessions whose browser+platform fingerprint was first seen within this
         // window are flagged "New" on the sessions page.
+        //
+        // @deprecated v0.7 — device identity now lives in the `devices` section
+        // (opaque cookie tokens). This fingerprint logic still runs alongside it,
+        // but the authoritative device model is `devices.*`.
         'new_device' => [
             'enabled' => true,
             'window_hours' => 24,
@@ -113,6 +117,43 @@ return [
                     // Queue name to send on, or false to send synchronously.
                     'queue' => false,
                 ],
+            ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Device identity (My Devices)
+    |--------------------------------------------------------------------------
+    */
+    'devices' => [
+        // Master switch for the device identity layer (opaque cookie tokens,
+        // the My Devices page, device-scoped session mapping).
+        'enabled' => true,
+
+        // The opaque token cookie: the raw token lives only in the browser,
+        // the database stores its SHA-256 hash.
+        'cookie' => [
+            'name' => 'filament_loginguard_device',
+            'lifetime_days' => 365,
+            // SameSite for the device cookie. Keep in sync with your app's
+            // session cookie when cross-site flows matter.
+            'same_site' => 'lax',
+        ],
+
+        // Devices with no active sessions and no activity for this many days
+        // are removed by filament-loginguard:cleanup-devices (0 = keep forever).
+        'retention_days' => 90,
+
+        // Hard cap of device identities per account (0 = unlimited). Oldest
+        // non-active devices are removed when the cap is exceeded on login.
+        'max_devices_per_user' => 20,
+
+        'notifications' => [
+            // Email the account owner when a NEW device identity signs in.
+            'new_device' => false,
+            'mail' => [
+                'queue' => false,
             ],
         ],
     ],
@@ -186,6 +227,23 @@ return [
             'authorize_revoke' => null,    // revoke / bulk-revoke actions
             // Allow exporting the sessions table as CSV from the admin page.
             'export' => true,
+        ],
+
+        // Self-service account security for every panel user. Never requires an
+        // admin permission — the query is always scoped server-side to the
+        // authenticated user.
+        'my_devices' => [
+            'enabled' => true,
+            'slug' => 'my-devices',
+            // Show "My Devices" in the user menu (recommended).
+            'user_menu' => true,
+            // Also list it in the panel navigation (off by default to keep the
+            // security self-service separate from admin navigation).
+            'navigation' => false,
+            'navigation_label' => null,
+            'navigation_icon' => 'heroicon-o-device-phone-mobile',
+            'navigation_group' => null,
+            'navigation_sort' => null,
         ],
     ],
 ];

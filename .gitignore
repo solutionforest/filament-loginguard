@@ -11,9 +11,13 @@ phpunit.xml
 phpstan.neon
 vendor
 workbench/storage
+workbench/.env
+workbench/database/*.sqlite
 
 /resources/dist/*
 !/resources/dist/.gitkeep
+!/resources/dist/filament-loginguard/
+/resources/dist/filament-loginguard/*.map
 
 /.opencode
 /opencode.json

@@ -37,6 +37,18 @@ class SecurityEvent extends Model
 
     public const TYPE_UNLOCKED = 'unlocked';
 
+    public const TYPE_DEVICE_REGISTERED = 'device_registered';
+
+    public const TYPE_DEVICE_SEEN = 'device_seen';
+
+    public const TYPE_DEVICE_FORGOTTEN = 'device_forgotten';
+
+    public const TYPE_DEVICE_REVOKED = 'device_revoked';
+
+    public const TYPE_SESSION_REVOKED_BY_USER = 'session_revoked_by_user';
+
+    public const TYPE_SESSIONS_REVOKED_OTHERS = 'sessions_revoked_others';
+
     protected $table = 'filament_loginguard_events';
 
     protected $guarded = [];

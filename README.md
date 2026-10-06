@@ -45,6 +45,7 @@ Enterprise-grade login security for Filament and Laravel — persistent brute-fo
   - 🆕 New-device detection with optional email alert
   - 🔒 Concurrent-session limits with oldest-first eviction
   - 🔄 One-click session revoke
+  - 📱 **My Devices** — self-service device list with sign-out, "This isn't me" and device forgetting (cookie-token device identity)
 - 🧰 **Filament Management Interface**
   - 📋 Login Attempts page — inspect & unblock recorded attempts
   - 📊 Failed-attempts / lockout stats widget
@@ -202,9 +203,23 @@ Requires `SESSION_DRIVER=database`. The **User Sessions** admin page lists every
 - **CSV export** (`pages.sessions.export`): export the active-session list as CSV (via Filament's export system).
 - Closing the browser without logging out (or backgrounding the tab) simply stops updating `last_activity`, so the session ages out naturally and expires after `session.lifetime`; sweep expired rows with the `filament-loginguard:cleanup-sessions` command.
 
+- Closing the browser without logging out (or backgrounding the tab) simply stops updating `last_activity`, so the session ages out naturally and expires after `session.lifetime`; sweep expired rows with the `filament-loginguard:cleanup-sessions` command.
+
+## My Devices (self-service account security)
+
+Every panel user gets a **My Devices** entry in the user menu (no admin permission required — the query is always scoped server-side to the authenticated user). Devices are grouped by live-session state:
+
+- **This device** — pinned on top, marked "This device", with no destructive actions.
+- **Other signed-in devices** — devices with live sessions, each with **Sign out** (delete that device's sessions, keep recognition) and **"This isn't me"** (a security incident: revoke all device sessions AND the identity — the cookie token can never silently become recognized again).
+- **Recently signed out** — a collapsible section of devices with no live session, each with **Forget device** (normal removal; the next sign-in from that browser is treated as a new device).
+
+Each row shows a type-aware icon (desktop / mobile / tablet, falling back to a terminal icon for scripts and unrecognized clients), the device name, "Last active · IP", and a **View details** slide-over (client, browser/OS, first seen, last active, last IP, active-session count and the full user agent). A **Sign out other sessions** header action deletes all other sessions while keeping the current one and all device recognitions — a known device is never shown as online just because it was seen before.
+
+Device identities are powered by an opaque cookie token: the browser holds a random token, the database only stores its SHA-256 hash, and identities are scoped per `guard + user model + user identifier` — so shared browsers, UUID/ULID users and multi-guard panels never collide. Devices beyond `devices.retention_days` with no active sessions are removed by `filament-loginguard:cleanup-devices`.
+
 ## Configuration
 
-This is the contents of the published config file (`config/filament-loginguard.php`), grouped into four sections: `lockout` (brute-force protection behavior), `sessions` (active-session tracking behavior), `maintenance` (optional auto-scheduling), and `pages` (Filament admin page wiring for both features):
+This is the contents of the published config file (`config/filament-loginguard.php`), grouped into five sections: `lockout` (brute-force protection behavior), `sessions` (active-session tracking behavior), `devices` (device identity for My Devices), `maintenance` (optional auto-scheduling), and `pages` (Filament admin page wiring for both features):
 
 ```php
 return [
@@ -251,7 +266,7 @@ return [
         'concurrent_limit' => null,        // max concurrent sessions per user; null = unlimited
 
         'new_device' => [
-            'enabled' => true,
+            'enabled' => true,             // @deprecated v0.7 — see devices.*
             'window_hours' => 24,          // sessions first seen within this window are flagged "New"
 
             'notifications' => [
@@ -259,6 +274,27 @@ return [
                 'mail' => [
                     'queue' => false,
                 ],
+            ],
+        ],
+    ],
+
+    // Device identity (My Devices): opaque cookie tokens, hashed in the DB.
+    'devices' => [
+        'enabled' => true,                 // master switch for the device identity layer
+
+        'cookie' => [
+            'name' => 'filament_loginguard_device',
+            'lifetime_days' => 365,
+            'same_site' => 'lax',
+        ],
+
+        'retention_days' => 90,            // drop devices with no sessions after this many days (0 = keep)
+        'max_devices_per_user' => 20,      // hard cap of device identities per account (0 = unlimited)
+
+        'notifications' => [
+            'new_device' => false,         // email the account owner on a new device sign-in
+            'mail' => [
+                'queue' => false,
             ],
         ],
     ],
@@ -304,6 +340,18 @@ return [
             'authorize_view' => null,      // viewing the page
             'authorize_revoke' => null,    // revoke / bulk-revoke actions
             'export' => true,              // allow CSV export of the sessions table
+        ],
+
+        // Self-service account security (no admin permission needed).
+        'my_devices' => [
+            'enabled' => true,
+            'slug' => 'my-devices',
+            'user_menu' => true,           // show "My Devices" in the user menu
+            'navigation' => false,         // also list it in the panel navigation
+            'navigation_label' => null,
+            'navigation_icon' => 'heroicon-o-device-phone-mobile',
+            'navigation_group' => null,
+            'navigation_sort' => null,
         ],
     ],
 ];
@@ -362,7 +410,7 @@ Planned features, roughly in the order they are likely to land. Suggestions and 
 
 - [ ] **Progressive response & CAPTCHA** — soften the cliff between "allowed" and "locked out". After a configurable number of failures, the login form requires a CAPTCHA (Cloudflare Turnstile or hCaptcha) instead of blocking outright; only repeated failures beyond a second threshold trigger a lockout. Shared-IP environments (offices behind NAT) stop being collateral damage, while bots fail the challenge automatically.
 - [ ] **Risk-based login (adaptive authentication)** — score every login from signals the package already collects (unseen device fingerprint, new IP range, unusual time of day, recent failure counts) and respond proportionally: allow, step-up verification (email code), or block and alert the account owner. An attacker with a stolen password is challenged on an unfamiliar device, while the legitimate owner logs in without noticing anything.
-- [ ] **My devices (self-service account activity)** — a per-user panel section (like Google's "Your devices") listing the user's own active sessions — browser, OS, IP, last active — with one-click "This isn't me" revoke and a "sign out everywhere else" button. Users can react to suspicious logins themselves instead of waiting for an admin.
+- [x] **My devices (self-service account activity)** — a per-user panel section (like Google's "Your devices") listing the user's own signed-in devices — browser, OS, IP, last active — with a "View details" slide-over, one-click "This isn't me" revoke and a "sign out other sessions" button. Users can react to suspicious logins themselves instead of waiting for an admin. *(shipped in v0.7.0 — powered by opaque device-token identities)*
 - [ ] **Geo / ASN blocking** — resolve the login source against an IP geolocation database (e.g. MaxMind GeoLite2) and optionally block or flag traffic by country or ASN. Blocking datacenter ASNs is a very cheap way to cut most scripted attacks without touching residential users; flagged attempts get a country badge on the admin pages.
 - [x] **Charts widget** — visualize the lockout stats that the numeric widget already tracks: a daily failed-attempts trend for the last 7/30 days and Top-10 leaderboards (attacked emails, source IPs, devices). Makes attack waves obvious at a glance. *(shipped in v0.6.0)*
 - [ ] **Slack / Telegram / Webhook notifications** — deliver lockout alerts beyond email via Laravel notification channels — a Slack channel is where on-call engineers actually look. Configured per channel (webhook URL, queue) alongside the existing mail notifications.

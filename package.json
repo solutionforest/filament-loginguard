@@ -2,8 +2,9 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "dev": "node bin/build.js --dev",
-        "build": "node bin/build.js",
+        "dev": "node bin/build.js --dev && npm run build:css",
+        "build": "node bin/build.js && npm run build:css",
+        "build:css": "tailwindcss --input ./resources/css/my-devices.css --output ./resources/dist/filament-loginguard/my-devices.css --minify",
         "build:workbench": "tailwindcss --input ./workbench/resources/css/app.css --output ./vendor/orchestra/testbench-core/laravel/public/css/app.css --minify && esbuild ./workbench/resources/js/app.js --bundle --outfile=./vendor/orchestra/testbench-core/laravel/public/js/app.js --minify"
     },
     "devDependencies": {

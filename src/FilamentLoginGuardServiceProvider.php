@@ -2,9 +2,13 @@
 
 namespace SolutionForest\FilamentLoginGuard;
 
+use Filament\Facades\Filament;
+use Filament\Navigation\MenuItem;
 use Filament\Support\Assets\Asset;
+use Filament\Support\Assets\Css;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\Support\Facades\FilamentIcon;
+use Filament\Support\Icons\Heroicon;
 use Illuminate\Auth\Events\Attempting;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
@@ -13,9 +17,11 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Filesystem\Filesystem;
 use Livewire\Features\SupportTesting\Testable;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupAttemptsCommand;
+use SolutionForest\FilamentLoginGuard\Commands\CleanupDevicesCommand;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupSessionsCommand;
 use SolutionForest\FilamentLoginGuard\Http\Controllers\SelfUnlockController;
 use SolutionForest\FilamentLoginGuard\Listeners\AuthenticationListener;
+use SolutionForest\FilamentLoginGuard\Pages\MyDevices;
 use SolutionForest\FilamentLoginGuard\Testing\TestsFilamentLoginGuard;
 use Spatie\LaravelPackageTools\Commands\InstallCommand;
 use Spatie\LaravelPackageTools\Package;
@@ -55,6 +61,24 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
+        // Self-service device identity (My Devices): register the user-menu
+        // item on every panel when enabled.
+        Filament::serving(function (): void {
+            if (! (bool) config('filament-loginguard.pages.my_devices.enabled', true)
+                || ! (bool) config('filament-loginguard.pages.my_devices.user_menu', true)
+                || ! (bool) config('filament-loginguard.devices.enabled', true)) {
+                return;
+            }
+
+            Filament::getCurrentPanel()?->userMenuItems([
+                MenuItem::make()
+                    ->label(__('filament-loginguard::loginguard.my_devices.title'))
+                    ->icon(Heroicon::DevicePhoneMobile)
+                    ->url(MyDevices::getUrl())
+                    ->sort(2),
+            ]);
+        });
+
         // Self-service unlock routes (signed, single-use link from the lockout
         // email): GET shows a confirmation page, POST performs the unlock.
         $router = $this->app->make('router');
@@ -139,7 +163,9 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
      */
     protected function getAssets(): array
     {
-        return [];
+        return [
+            Css::make('my-devices', __DIR__ . '/../resources/dist/filament-loginguard/my-devices.css'),
+        ];
     }
 
     /**
@@ -150,6 +176,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
         return [
             CleanupAttemptsCommand::class,
             CleanupSessionsCommand::class,
+            CleanupDevicesCommand::class,
         ];
     }
 
@@ -192,6 +219,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
             'create_filament_loginguard_events_table',
             'create_filament_loginguard_known_devices_table',
             'create_filament_loginguard_lockout_histories_table',
+            'create_filament_loginguard_devices_tables',
             'update_filament_loginguard_upgrade_to_scoped_locks',
         ];
     }
