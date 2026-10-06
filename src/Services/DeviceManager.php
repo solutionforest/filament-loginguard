@@ -133,14 +133,32 @@ class DeviceManager
     }
 
     /**
-     * Security-incident path: revoke all the device's sessions and mark the
-     * device itself revoked. The token will never silently become recognized
-     * again — the next login from the same cookie creates a fresh identity.
+     * Security-incident path: delete the device's real Laravel sessions before
+     * removing their mappings, then revoke the identity and any device trust.
+     * The current session is protected at the service boundary as well as in
+     * the UI. Session deletion and identity changes share one transaction.
      */
     public function revoke(Device $device, string $reason = 'this_is_not_me'): void
     {
-        $device->sessions()->delete();
-        $device->forceFill(['revoked_at' => Carbon::now()])->save();
+        $currentSessionId = (string) app('session.store')->getId();
+
+        DB::transaction(function () use ($device, $currentSessionId): void {
+            // Do not trust a client-supplied device hash to protect the current
+            // session: check its server-side mapping before deleting anything.
+            abort_if(
+                $device->sessions()->where('session_id', $currentSessionId)->exists(),
+                403,
+            );
+
+            // Reuse the existing session deletion path. Deleting only the
+            // relationship would leave the authenticated session rows alive.
+            $this->signOutDevice($device, $currentSessionId);
+
+            $device->forceFill([
+                'revoked_at' => Carbon::now(),
+                'trusted_at' => null,
+            ])->save();
+        });
 
         SecurityEvent::record(SecurityEvent::TYPE_DEVICE_REVOKED, null, null, null, $device->guard, $device->device_name, [
             'device_id' => $device->id,

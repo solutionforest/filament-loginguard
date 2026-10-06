@@ -2,6 +2,12 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- **Security:** "This isn't me" device revocation now also deletes the device's real Laravel session rows — previously only the device↔session mappings were removed, leaving the compromised session still authenticated. Revocation is wrapped in a transaction (session deletion + identity/trust changes), reuses the existing sign-out path, clears `trusted_at`, and additionally rejects (403) at the service boundary any attempt to revoke the device mapped to the current session.
+
 ## v0.7.0 - 2026-10-06
 
 ### Added
