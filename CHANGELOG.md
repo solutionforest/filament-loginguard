@@ -2,6 +2,25 @@
 
 All notable changes to `filament-loginguard` will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- **IP intelligence (GeoIP enrichment) foundation** — the first, independently-shippable layer for risk-based login. It only *produces* signals; it never blocks or challenges a login on its own.
+  - `IpLocation` value object (country / country name / city / subdivision / latitude / longitude / accuracy radius / ASN / ASN organization) and an `IpIntelligence` interface with a single `MaxmindIpIntelligence` implementation that reads local GeoLite2-Country / -City / -ASN `.mmdb` files. The `Reader` is cached per database kind, guarded by `class_exists()` (the package is optional) and degrades silently to `null` on any error — IP intelligence can never break the login flow.
+  - `ip_intel` config section: `enabled` (default **`false`**), `databases.{country,city,asn}` (each optional), and `novelty_window_days` (default `90`).
+  - `filament_loginguard_location_history` aggregate table + `LocationHistory` model (`record()` / `isNewCountry()` / `isNewAsn()`) keyed by `guard + user_type + user_identifier + country + asn` for O(1) "new country / new ASN" lookups.
+  - `AuthenticationListener` integration: on `handleFailed` and `handleLogin` the resolved location is written into `SecurityEvent.metadata`; on successful login `is_new_country` / `is_new_asn` are computed *before* recording and the location history is upserted.
+  - `geoip2/geoip2` added to `suggest` (and `require-dev` for tests/analysis).
+  - `filament-loginguard:ip-intel:test` diagnostic command — reports whether the feature is enabled, whether `geoip2/geoip2` is installed, each database's path/state, and the resolved signals for a test IP (exit code `1` when nothing resolves).
+  - **Country badge** on the Login Attempts admin table: each IP shows its most recently resolved country (ISO code), eager-loaded via an of-many relationship. ASN is deliberately not shown.
+
+### Upgrade notes
+
+- **Non-breaking.** The feature is opt-in: with `ip_intel.enabled` left at its `false` default (or with no databases configured), `lookup()` returns `null` and login behaviour is byte-for-byte unchanged. Existing published configs that lack the `ip_intel` key merge the new defaults, so no config republish is required.
+- The new migration only **creates** a new table; no existing table is altered. `php artisan migrate` applies it automatically.
+- To enable: `composer require geoip2/geoip2`, download the GeoLite2 `.mmdb` files yourself (MaxMind's licence does not permit redistribution), point `ip_intel.databases.*` at them, and set `ip_intel.enabled` to `true`.
+
 ## v0.7.1 - 2026-10-06
 
 ### Fixed

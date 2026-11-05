@@ -16,5 +16,10 @@ it('merges the config under the filament-loginguard key', function () {
         ->and(config('filament-loginguard.lockout.notifications.mail.cooldown_minutes'))->toBe(60)
         ->and(config('filament-loginguard.lockout.notifications.mail.queue'))->toBeFalse()
         ->and(config('filament-loginguard.pages.attempts.enabled'))->toBeTrue()
-        ->and(config('filament-loginguard.pages.attempts.slug'))->toBe('login-guard');
+        ->and(config('filament-loginguard.pages.attempts.slug'))->toBe('login-guard')
+        ->and(config('filament-loginguard.ip_intel.enabled'))->toBeFalse()
+        ->and(config('filament-loginguard.ip_intel.databases.country'))->toBeNull()
+        ->and(config('filament-loginguard.ip_intel.databases.city'))->toBeNull()
+        ->and(config('filament-loginguard.ip_intel.databases.asn'))->toBeNull()
+        ->and(config('filament-loginguard.ip_intel.novelty_window_days'))->toBe(90);
 });

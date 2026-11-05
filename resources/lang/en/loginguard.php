@@ -11,6 +11,7 @@ return [
         'table' => [
             'columns' => [
                 'ip' => 'IP Address',
+                'country' => 'Country',
                 'email' => 'Email',
                 'user_agent' => 'Device',
                 'attempts' => 'Attempts',

@@ -19,9 +19,12 @@ use Livewire\Features\SupportTesting\Testable;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupAttemptsCommand;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupDevicesCommand;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupSessionsCommand;
+use SolutionForest\FilamentLoginGuard\Commands\IpIntelTestCommand;
 use SolutionForest\FilamentLoginGuard\Http\Controllers\SelfUnlockController;
 use SolutionForest\FilamentLoginGuard\Listeners\AuthenticationListener;
 use SolutionForest\FilamentLoginGuard\Pages\MyDevices;
+use SolutionForest\FilamentLoginGuard\Services\IpIntelligence;
+use SolutionForest\FilamentLoginGuard\Services\MaxmindIpIntelligence;
 use SolutionForest\FilamentLoginGuard\Testing\TestsFilamentLoginGuard;
 use Spatie\LaravelPackageTools\Commands\InstallCommand;
 use Spatie\LaravelPackageTools\Package;
@@ -57,6 +60,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
     public function packageRegistered(): void
     {
         $this->app->singleton(LoginGuardService::class);
+        $this->app->singleton(IpIntelligence::class, MaxmindIpIntelligence::class);
     }
 
     public function packageBooted(): void
@@ -177,6 +181,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
             CleanupAttemptsCommand::class,
             CleanupSessionsCommand::class,
             CleanupDevicesCommand::class,
+            IpIntelTestCommand::class,
         ];
     }
 
@@ -221,6 +226,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
             'create_filament_loginguard_lockout_histories_table',
             'create_filament_loginguard_devices_tables',
             'update_filament_loginguard_upgrade_to_scoped_locks',
+            'create_filament_loginguard_location_history_table',
         ];
     }
 }

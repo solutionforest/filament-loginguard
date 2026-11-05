@@ -120,12 +120,18 @@ class LoginGuard extends Page implements HasTable
     public function table(Table $table): Table
     {
         return $table
-            ->query(LoginAttempt::query())
+            ->query(LoginAttempt::query()->with('latestLocatedEvent'))
             ->defaultSort('last_attempt_at', 'desc')
             ->columns([
                 TextColumn::make('ip')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.ip'))
                     ->searchable(),
+                TextColumn::make('country')
+                    ->label(__('filament-loginguard::loginguard.page.table.columns.country'))
+                    ->state(fn (LoginAttempt $record): ?string => $record->latestLocatedEvent?->metadata['country'] ?? null)
+                    ->badge()
+                    ->placeholder('-')
+                    ->toggleable(),
                 TextColumn::make('email')
                     ->label(__('filament-loginguard::loginguard.page.table.columns.email'))
                     ->searchable(),

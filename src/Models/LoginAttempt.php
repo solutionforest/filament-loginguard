@@ -5,6 +5,7 @@ namespace SolutionForest\FilamentLoginGuard\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
 
@@ -67,5 +68,18 @@ class LoginAttempt extends Model
     public function scopeLocked(Builder $query): Builder
     {
         return $query->where('locked_until', '>', now());
+    }
+
+    /**
+     * The most recent security event carrying location metadata for this IP.
+     * Powers the "country" badge on the admin attempts table; the of-many
+     * subquery lets the table eager-load it in one query (no N+1).
+     */
+    public function latestLocatedEvent(): HasOne
+    {
+        return $this->hasOne(SecurityEvent::class, 'ip', 'ip')
+            ->ofMany(['id' => 'max'], function (Builder $query): void {
+                $query->whereNotNull('metadata');
+            });
     }
 }

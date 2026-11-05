@@ -160,6 +160,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | IP intelligence (GeoIP enrichment)
+    |--------------------------------------------------------------------------
+    |
+    | Enriches the raw client IP with structured signals (country, city, ASN,
+    | latitude/longitude) using a local MaxMind GeoLite2 database. The resolved
+    | signals are stored on security events and used to detect "new country /
+    | new ASN" logins. This layer only PRODUCES signals — it never blocks or
+    | challenges a login on its own (that is the risk-based login roadmap).
+    |
+    | Requires the optional `geoip2/geoip2` package and locally downloaded
+    | GeoLite2 .mmdb files. MaxMind's license does not permit redistributing
+    | the databases, so download them yourself (see the docs) and point the
+    | paths below at them.
+    */
+    'ip_intel' => [
+        // Master switch. When false (or when the geoip2 package / databases are
+        // absent), lookup() silently degrades to null and never affects login.
+        'enabled' => false,
+
+        // Local .mmdb file paths. Each is independent and optional — configure
+        // only what you have. City also provides country; country is the cheapest
+        // signal; ASN (autonomous system number) is very stable and cheap.
+        'databases' => [
+            'country' => null,          // e.g. storage_path('geoip/GeoLite2-Country.mmdb')
+            'city' => null,             // e.g. storage_path('geoip/GeoLite2-City.mmdb')
+            'asn' => null,              // e.g. storage_path('geoip/GeoLite2-ASN.mmdb')
+        ],
+
+        // A country / ASN the account has not been seen from within this many
+        // days is considered "new" (is_new_country / is_new_asn signals).
+        'novelty_window_days' => 90,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Maintenance
     |--------------------------------------------------------------------------
     */

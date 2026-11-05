@@ -46,6 +46,10 @@ Enterprise-grade login security for Filament and Laravel — persistent brute-fo
   - 🔒 Concurrent-session limits with oldest-first eviction
   - 🔄 One-click session revoke
   - 📱 **My Devices** — self-service device list with sign-out, "This isn't me" and device forgetting (cookie-token device identity)
+- 🌍 **IP Intelligence (GeoIP enrichment)**
+  - 📍 Resolves country / city / ASN / coordinates from the login IP (MaxMind GeoLite2)
+  - 🆕 "New country / new ASN" signals per account — the foundation for risk-based login (signals only, never blocks)
+  - 🏷️ Country badge on the Login Attempts admin table
 - 🧰 **Filament Management Interface**
   - 📋 Login Attempts page — inspect & unblock recorded attempts
   - 📊 Failed-attempts / lockout stats widget
@@ -75,6 +79,7 @@ Enterprise-grade login security for Filament and Laravel — persistent brute-fo
   - [3. Register the Admin Pages](#3-register-the-admin-pages)
 - [How it works](#how-it-works)
 - [Session management](#session-management)
+- [IP intelligence (GeoIP enrichment)](#ip-intelligence-geoip-enrichment)
 - [Configuration](#configuration)
 - [Maintenance](#maintenance)
 - [Roadmap](#roadmap)
@@ -217,9 +222,76 @@ Each row shows a type-aware icon (desktop / mobile / tablet, falling back to a t
 
 Device identities are powered by an opaque cookie token: the browser holds a random token, the database only stores its SHA-256 hash, and identities are scoped per `guard + user model + user identifier` — so shared browsers, UUID/ULID users and multi-guard panels never collide. Devices beyond `devices.retention_days` with no active sessions are removed by `filament-loginguard:cleanup-devices`.
 
+## IP intelligence (GeoIP enrichment)
+
+> [!NOTE]
+> This is a **foundation layer**: it enriches logins with location/network signals (country, city, ASN, coordinates) and flags "new country / new ASN" per account. It **only produces signals** — it never blocks, challenges or otherwise changes the login flow. The signals are the input for the risk-based login and Geo/ASN blocking roadmap items.
+
+### What gets recorded
+
+On every failed and successful login, the package resolves the client IP against local MaxMind GeoLite2 databases and stores the result in the security event's `metadata`:
+
+- `country` / `country_name` — ISO 3166-1 alpha-2 code and name
+- `city` / `subdivision`
+- `latitude` / `longitude` / `accuracy_radius_km`
+- `asn` / `asn_organization` — autonomous system number and ISP name
+
+On a successful login, two extra signals are computed against a per-account location history: `is_new_country` and `is_new_asn` — whether the account has not been seen from this country / ASN within `novelty_window_days`. The history lives in the `filament_loginguard_location_history` table (keyed by `guard + user type + user identifier`). The Login Attempts admin table also gains a **Country** badge per IP.
+
+### Enabling it
+
+The feature is **off by default** and optional — it needs the `geoip2/geoip2` package and the database files, which MaxMind's licence does not permit us to redistribute:
+
+1. Install the reader package:
+
+   ```bash
+   composer require geoip2/geoip2
+   ```
+
+2. Download the GeoLite2 databases you need from MaxMind (free account) — `GeoLite2-Country.mmdb`, `GeoLite2-City.mmdb` and/or `GeoLite2-ASN.mmdb` — and place them somewhere private (e.g. `storage/app/geoip/`).
+
+3. Point the config at them and switch it on:
+
+   ```php
+   // config/filament-loginguard.php
+   'ip_intel' => [
+       'enabled' => true,
+       'databases' => [
+           'country' => storage_path('app/geoip/GeoLite2-Country.mmdb'),
+           'city' => storage_path('app/geoip/GeoLite2-City.mmdb'),
+           'asn' => storage_path('app/geoip/GeoLite2-ASN.mmdb'),
+       ],
+       'novelty_window_days' => 90,
+   ],
+   ```
+
+   Each database is independent — configure only what you have. `country` is the cheapest signal; `asn` is very stable; `city` also provides country plus coordinates.
+
+4. Verify your setup:
+
+   ```bash
+   php artisan filament-loginguard:ip-intel:test
+   php artisan filament-loginguard:ip-intel:test 8.8.8.8   # look up a specific IP
+   ```
+
+   The command reports the `enabled` flag, whether the `geoip2` package is installed, each database's path/state, and the resolved signals for the IP (exit code 0 on success, 1 when nothing resolves).
+
+### Failure behaviour
+
+IP intelligence is deliberately **fail-safe**. If it's disabled, the package is missing, the files are missing, or the IP is unmapped, `lookup()` returns `null` and the login proceeds exactly as before — location enrichment can never break authentication. When disabled or unresolved, no location metadata is written and no history rows are created.
+
+### Privacy
+
+Resolved IP location is personal data. Before enabling, consider your obligations under GDPR / CCPA / local law:
+
+- It is **off by default** — nothing is collected until you opt in.
+- The raw IP is already stored by the lockout layer; this feature additionally stores a country code, city and ASN. Keep it scoped to what you need (e.g. country + ASN only, skipping `city` and coordinates).
+- `filament-loginguard:cleanup-attempts` / `cleanup-sessions` / `cleanup-devices` do not touch location history; treat `filament_loginguard_location_history` like your other security logs and define a retention policy for it.
+- Disclose this in your privacy policy.
+
 ## Configuration
 
-This is the contents of the published config file (`config/filament-loginguard.php`), grouped into five sections: `lockout` (brute-force protection behavior), `sessions` (active-session tracking behavior), `devices` (device identity for My Devices), `maintenance` (optional auto-scheduling), and `pages` (Filament admin page wiring for both features):
+This is the contents of the published config file (`config/filament-loginguard.php`), grouped into six sections: `lockout` (brute-force protection behavior), `sessions` (active-session tracking behavior), `devices` (device identity for My Devices), `ip_intel` (GeoIP enrichment), `maintenance` (optional auto-scheduling), and `pages` (Filament admin page wiring for both features):
 
 ```php
 return [
@@ -297,6 +369,18 @@ return [
                 'queue' => false,
             ],
         ],
+    ],
+
+    // IP intelligence (GeoIP enrichment): resolves the login IP against local
+    // MaxMind GeoLite2 databases. Signals only — never blocks. Off by default.
+    'ip_intel' => [
+        'enabled' => false,                // master switch
+        'databases' => [                   // local .mmdb paths; each optional
+            'country' => null,
+            'city' => null,
+            'asn' => null,
+        ],
+        'novelty_window_days' => 90,       // "new country / ASN" lookback window
     ],
 
     'maintenance' => [
@@ -409,9 +493,9 @@ Alternatively, set `maintenance.cleanup_attempts.enabled` / `maintenance.cleanup
 Planned features, roughly in the order they are likely to land. Suggestions and PRs welcome — open an issue to discuss.
 
 - [ ] **Progressive response & CAPTCHA** — soften the cliff between "allowed" and "locked out". After a configurable number of failures, the login form requires a CAPTCHA (Cloudflare Turnstile or hCaptcha) instead of blocking outright; only repeated failures beyond a second threshold trigger a lockout. Shared-IP environments (offices behind NAT) stop being collateral damage, while bots fail the challenge automatically.
-- [ ] **Risk-based login (adaptive authentication)** — score every login from signals the package already collects (unseen device fingerprint, new IP range, unusual time of day, recent failure counts) and respond proportionally: allow, step-up verification (email code), or block and alert the account owner. An attacker with a stolen password is challenged on an unfamiliar device, while the legitimate owner logs in without noticing anything.
+- [ ] **Risk-based login (adaptive authentication)** — score every login from signals the package already collects (unseen device fingerprint, new IP range, unusual time of day, recent failure counts) and respond proportionally: allow, step-up verification (email code), or block and alert the account owner. An attacker with a stolen password is challenged on an unfamiliar device, while the legitimate owner logs in without noticing anything. *(The IP-intelligence foundation — country / ASN / city signals and `is_new_country` / `is_new_asn` — now ships and feeds this item.)*
 - [x] **My devices (self-service account activity)** — a per-user panel section (like Google's "Your devices") listing the user's own signed-in devices — browser, OS, IP, last active — with a "View details" slide-over, one-click "This isn't me" revoke and a "sign out other sessions" button. Users can react to suspicious logins themselves instead of waiting for an admin. *(shipped in v0.7.0 — powered by opaque device-token identities)*
-- [ ] **Geo / ASN blocking** — resolve the login source against an IP geolocation database (e.g. MaxMind GeoLite2) and optionally block or flag traffic by country or ASN. Blocking datacenter ASNs is a very cheap way to cut most scripted attacks without touching residential users; flagged attempts get a country badge on the admin pages.
+- [ ] **Geo / ASN blocking** — resolve the login source against an IP geolocation database (e.g. MaxMind GeoLite2) and optionally block or flag traffic by country or ASN. Blocking datacenter ASNs is a very cheap way to cut most scripted attacks without touching residential users; flagged attempts get a country badge on the admin pages. *(The GeoIP resolution foundation — country / ASN lookup and the admin country badge — now ships; the actual block/flag rules are what's left.)*
 - [x] **Charts widget** — visualize the lockout stats that the numeric widget already tracks: a daily failed-attempts trend for the last 7/30 days and Top-10 leaderboards (attacked emails, source IPs, devices). Makes attack waves obvious at a glance. *(shipped in v0.6.0)*
 - [ ] **Slack / Telegram / Webhook notifications** — deliver lockout alerts beyond email via Laravel notification channels — a Slack channel is where on-call engineers actually look. Configured per channel (webhook URL, queue) alongside the existing mail notifications.
 - [ ] **Cloudflare integration** — push lockouts to the edge: when an IP is locked out, automatically create a block rule in your Cloudflare zone via the API (and optionally remove it on unlock). Attack traffic is dropped at the CDN instead of ever reaching Laravel, which changes the game under volumetric attacks.

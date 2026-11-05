@@ -9,8 +9,10 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use SolutionForest\FilamentLoginGuard\Events\LoginLockedOut;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
+use SolutionForest\FilamentLoginGuard\Models\LocationHistory;
 use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 use SolutionForest\FilamentLoginGuard\Services\DeviceManager;
+use SolutionForest\FilamentLoginGuard\Services\IpIntelligence;
 use SolutionForest\FilamentLoginGuard\Support\IpAddress;
 use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
 
@@ -19,6 +21,7 @@ class AuthenticationListener
     public function __construct(
         protected LoginGuardService $service,
         protected DeviceManager $deviceManager,
+        protected IpIntelligence $ipIntelligence,
     ) {}
 
     /**
@@ -73,6 +76,7 @@ class AuthenticationListener
             null,
             $event->guard,
             ParsesUserAgent::parseDeviceName(request()->userAgent()),
+            $this->ipIntelligence->lookup($ip)?->toArray(),
         );
 
         $result = $this->service->recordFailure($ip, $email, request()->userAgent());
@@ -120,6 +124,26 @@ class AuthenticationListener
         $userId = $event->user->getAuthIdentifier();
         $userIdInt = is_numeric($userId) && (int) $userId > 0 ? (int) $userId : null;
 
+        $location = $this->ipIntelligence->lookup($ip);
+
+        if ($location !== null) {
+            $userType = $event->user::class;
+            $identifier = (string) $userId;
+            $metadata = $location->toArray();
+
+            if ($location->country !== null) {
+                $metadata['is_new_country'] = LocationHistory::isNewCountry($event->guard, $userType, $identifier, $location->country);
+            }
+
+            if ($location->asn !== null) {
+                $metadata['is_new_asn'] = LocationHistory::isNewAsn($event->guard, $userType, $identifier, $location->asn);
+            }
+
+            LocationHistory::record($event->guard, $userType, $identifier, $location->country, $location->asn);
+        } else {
+            $metadata = null;
+        }
+
         if ($guardTracked) {
             if ($email !== null) {
                 $this->service->recordSuccess($ip, $email);
@@ -135,6 +159,7 @@ class AuthenticationListener
             $userIdInt,
             $event->guard,
             ParsesUserAgent::parseDeviceName(request()->userAgent()),
+            $metadata,
         );
 
         if ($sessionsEnabled && $userIdInt !== null) {

@@ -41,3 +41,19 @@ it('enforces the unique ip and email pair', function () {
     expect(fn () => DB::table('filament_loginguard_attempts')->insert($data))
         ->toThrow(QueryException::class);
 });
+
+it('creates the location history table with the expected columns', function () {
+    expect(Schema::hasTable('filament_loginguard_location_history'))->toBeTrue()
+        ->and(Schema::hasColumns('filament_loginguard_location_history', [
+            'id',
+            'guard',
+            'user_type',
+            'user_identifier',
+            'country',
+            'asn',
+            'first_seen_at',
+            'last_seen_at',
+            'created_at',
+            'updated_at',
+        ]))->toBeTrue();
+});

@@ -10,6 +10,7 @@ use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
+use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 use SolutionForest\FilamentLoginGuard\Pages\LoginGuard;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestCluster;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestUser;
@@ -197,4 +198,62 @@ it('nests under a cluster when configured', function () {
     config()->set('filament-loginguard.pages.attempts.cluster', 'Not\\A\\Cluster');
 
     expect(LoginGuard::getCluster())->toBeNull();
+});
+
+it('shows the country badge (not ASN) on the attempts table', function () {
+    LoginAttempt::factory()->create([
+        'ip' => '1.2.3.4',
+        'email' => 'a@example.com',
+    ]);
+
+    SecurityEvent::query()->create([
+        'type' => SecurityEvent::TYPE_LOGIN_FAILED,
+        'ip' => '1.2.3.4',
+        'email' => 'a@example.com',
+        'occurred_at' => now(),
+        'metadata' => ['country' => 'US', 'asn' => 7922],
+    ]);
+
+    Livewire::test(LoginGuard::class)
+        ->assertSuccessful()
+        ->assertSee('US')
+        ->assertDontSee('7922');
+});
+
+it('resolves the latest located event for the country badge', function () {
+    $attempt = LoginAttempt::factory()->create([
+        'ip' => '1.2.3.4',
+        'email' => 'a@example.com',
+    ]);
+
+    SecurityEvent::query()->create([
+        'type' => SecurityEvent::TYPE_LOGIN_FAILED,
+        'ip' => '1.2.3.4',
+        'email' => 'a@example.com',
+        'occurred_at' => now()->subMinutes(10),
+        'metadata' => ['country' => 'US'],
+    ]);
+
+    SecurityEvent::query()->create([
+        'type' => SecurityEvent::TYPE_LOGIN_FAILED,
+        'ip' => '1.2.3.4',
+        'email' => 'a@example.com',
+        'occurred_at' => now(),
+        'metadata' => ['country' => 'GB', 'asn' => 13335],
+    ]);
+
+    $resolved = LoginAttempt::query()->with('latestLocatedEvent')->findOrFail($attempt->id);
+
+    expect($resolved->latestLocatedEvent?->metadata)->toBe(['country' => 'GB', 'asn' => 13335]);
+});
+
+it('shows no country badge when the IP has no location metadata', function () {
+    LoginAttempt::factory()->create([
+        'ip' => '1.2.3.4',
+        'email' => 'a@example.com',
+    ]);
+
+    Livewire::test(LoginGuard::class)
+        ->assertSuccessful()
+        ->assertDontSee('US');
 });
