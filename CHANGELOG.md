@@ -15,9 +15,14 @@ All notable changes to `filament-loginguard` will be documented in this file.
   - `filament-loginguard:ip-intel:test` diagnostic command — reports whether the feature is enabled, whether `geoip2/geoip2` is installed, each database's path/state, and the resolved signals for a test IP (exit code `1` when nothing resolves).
   - **Country badge** on the Login Attempts admin table: each IP shows its most recently resolved country (ISO code), eager-loaded via an of-many relationship. ASN is deliberately not shown.
 
+### Changed
+
+- **Breaking:** the minimum supported Filament version is now 5.8.3 (raised from 5.8.2). 5.8.2 is affected by `PKSA-cnr1-6g7k-bp3d` (multi-factor authentication management actions missing password reauthentication); 5.8.3 is the first 5.x release without a known advisory.
+- **Breaking:** Laravel 11 support is dropped. Laravel 11 is end-of-life and its final releases carry unpatched security advisories (`PKSA-b41t-wbzk-9q51` TokenGuard authentication bypass, among others); the fixes only exist in Laravel 12.68+ / 13.29+. The CI matrix and documented support now cover Laravel 12 and 13 only.
+
 ### Upgrade notes
 
-- **Non-breaking.** The feature is opt-in: with `ip_intel.enabled` left at its `false` default (or with no databases configured), `lookup()` returns `null` and login behaviour is byte-for-byte unchanged. Existing published configs that lack the `ip_intel` key merge the new defaults, so no config republish is required.
+- **The IP intelligence feature is non-breaking.** It is opt-in: with `ip_intel.enabled` left at its `false` default (or with no databases configured), `lookup()` returns `null` and login behaviour is byte-for-byte unchanged. Existing published configs that lack the `ip_intel` key merge the new defaults, so no config republish is required.
 - The new migration only **creates** a new table; no existing table is altered. `php artisan migrate` applies it automatically.
 - To enable: `composer require geoip2/geoip2`, download the GeoLite2 `.mmdb` files yourself (MaxMind's licence does not permit redistribution), point `ip_intel.databases.*` at them, and set `ip_intel.enabled` to `true`.
 

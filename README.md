@@ -7,7 +7,7 @@
         <img alt="FILAMENT 5.x" src="https://img.shields.io/badge/FILAMENT-5.x-EBB304?style=for-the-badge">
     </a>
     <a href="https://laravel.com/docs">
-        <img alt="LARAVEL 11 | 12 | 13" src="https://img.shields.io/badge/LARAVEL-11%20%7C%2012%20%7C%2013-FF2D20?style=for-the-badge&logo=laravel">
+        <img alt="LARAVEL 12 | 13" src="https://img.shields.io/badge/LARAVEL-12%20%7C%2013-FF2D20?style=for-the-badge&logo=laravel">
     </a>
     <a href="https://packagist.org/packages/solution-forest/filament-loginguard">
         <img alt="Packagist" src="https://img.shields.io/packagist/v/solution-forest/filament-loginguard.svg?style=for-the-badge&logo=packagist">
@@ -64,10 +64,10 @@ Enterprise-grade login security for Filament and Laravel — persistent brute-fo
 | Requirement | Version |
 |-------------|---------|
 | PHP         | 8.3+    |
-| Laravel     | 11, 12 or 13 |
-| Filament    | 5.x (≥ 5.8.2, Livewire 4) |
+| Laravel     | 12 or 13 |
+| Filament    | 5.x (≥ 5.8.3, Livewire 4) |
 
-> Earlier 5.x releases have known security advisories; require at least Filament 5.8.2.
+> Earlier 5.x releases have known security advisories; require at least Filament 5.8.3. Laravel 11 is no longer supported — it is end-of-life and its final releases carry unpatched security advisories.
 
 <b>Table of Contents</b>
 
