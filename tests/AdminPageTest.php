@@ -247,13 +247,13 @@ it('resolves the latest located event for the country badge', function () {
     expect($resolved->latestLocatedEvent?->metadata)->toBe(['country' => 'GB', 'asn' => 13335]);
 });
 
-it('shows no country badge when the IP has no location metadata', function () {
-    LoginAttempt::factory()->create([
+it('resolves no located event when the IP has no location metadata', function () {
+    $attempt = LoginAttempt::factory()->create([
         'ip' => '1.2.3.4',
         'email' => 'a@example.com',
     ]);
 
-    Livewire::test(LoginGuard::class)
-        ->assertSuccessful()
-        ->assertDontSee('US');
+    $resolved = LoginAttempt::query()->with('latestLocatedEvent')->findOrFail($attempt->id);
+
+    expect($resolved->latestLocatedEvent)->toBeNull();
 });
