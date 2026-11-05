@@ -248,7 +248,35 @@ The feature is **off by default** and optional — it needs the `geoip2/geoip2` 
    composer require geoip2/geoip2
    ```
 
-2. Download the GeoLite2 databases you need from MaxMind (free account) — `GeoLite2-Country.mmdb`, `GeoLite2-City.mmdb` and/or `GeoLite2-ASN.mmdb` — and place them somewhere private (e.g. `storage/app/geoip/`).
+2. Obtain the database files. Two options — use `geoipupdate` to keep them current automatically (recommended for production), or download them manually from the account portal.
+
+   **Option A — `geoipupdate` (recommended).** MaxMind's official updater. Create a `GeoIP.conf` with your account ID, license key and the editions you need:
+
+   ```ini
+   # /etc/GeoIP.conf
+   AccountID YOUR_ACCOUNT_ID
+   LicenseKey YOUR_LICENSE_KEY
+   EditionIDs GeoLite2-Country GeoLite2-City GeoLite2-ASN
+   DatabaseDirectory /var/www/storage/app/geoip
+   ```
+
+   ```bash
+   geoipupdate
+   ```
+
+   Then schedule it with cron. City/Country are published every Tuesday & Friday, ASN every weekday, so a daily run covers everything:
+
+   ```cron
+   0 4 * * * /usr/local/bin/geoipupdate
+   ```
+
+   **Option B — manual download.** In the MaxMind account portal open **GeoIP / GeoLite → Download Files** and download the `GeoLite2-Country`, `GeoLite2-City` and/or `GeoLite2-ASN` archives in `.mmdb` (binary) format (GZIP/ZIP/SHA256), extract them, and place the `.mmdb` files somewhere private (e.g. `storage/app/geoip/`). Use *Show archived database files* for releases from the last 30 days.
+
+   > [!WARNING]
+   > The GeoLite EULA requires you to **keep the data up to date** — replace the databases within 30 days of each new release. Manual downloads won't remind you; `geoipupdate` + cron does it automatically.
+
+   > [!NOTE]
+   > Behind a firewall, allow outbound HTTPS (443) to `download.maxmind.com`, `updates.maxmind.com`, and — since downloads redirect to R2 presigned URLs — `mm-prod-geoip-databases.a2649acb697e2c09b632799562c076f2.r2.cloudflarestorage.com`. Your HTTP client must also follow redirects.
 
 3. Point the config at them and switch it on:
 
