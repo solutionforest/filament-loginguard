@@ -91,7 +91,7 @@ jobs:
         if: success() || failure()
         env:
           LOGINGUARD_TEST_PORT: ${{ job.services.mysql.ports[3306] }}
-        run: vendor/bin/pest --ci --stop-on-failure --stop-on-error
+        run: vendor/bin/pest --ci
 
   browser:
     name: Chromium browser flows

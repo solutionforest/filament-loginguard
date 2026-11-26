@@ -4,6 +4,7 @@ use Carbon\Carbon;
 use Filament\Facades\Filament;
 use Filament\Panel;
 use Filament\Widgets\WidgetConfiguration;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Livewire;
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
@@ -324,7 +325,7 @@ it('nests under a cluster when configured', function () {
 });
 
 it('shows the country badge (not ASN) on the attempts table', function () {
-    LoginAttempt::factory()->create([
+    $attempt = LoginAttempt::factory()->create([
         'ip' => '1.2.3.4',
         'email' => 'a@example.com',
     ]);
@@ -339,8 +340,10 @@ it('shows the country badge (not ASN) on the attempts table', function () {
 
     Livewire::test(LoginGuard::class)
         ->assertSuccessful()
-        ->assertSee('US')
-        ->assertDontSee('7922');
+        ->assertTableColumnStateSet('country', 'US', $attempt)
+        ->assertTableColumnDoesNotExist('asn')
+        ->assertSeeText('US')
+        ->assertDontSeeText('7922');
 });
 
 it('resolves the latest located event for the country badge', function () {
@@ -367,7 +370,7 @@ it('resolves the latest located event for the country badge', function () {
 
     $resolved = LoginAttempt::query()->with('latestLocatedEvent')->findOrFail($attempt->id);
 
-    expect($resolved->latestLocatedEvent?->metadata)->toBe(['country' => 'GB', 'asn' => 13335]);
+    expect(Arr::sortRecursive($resolved->latestLocatedEvent?->metadata ?? []))->toBe(['asn' => 13335, 'country' => 'GB']);
 });
 
 it('resolves no located event when the IP has no location metadata', function () {

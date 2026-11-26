@@ -4,6 +4,7 @@ use Carbon\Carbon;
 use Illuminate\Auth\Events\Attempting;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Validation\ValidationException;
 use SolutionForest\FilamentLoginGuard\Events\LoginLockedOut;
@@ -438,10 +439,10 @@ it('releases only the successful account email lock and logs the release', funct
         ->and($service->isLocked('9.9.9.9', 'a@example.com'))->toBeFalse()
         ->and($service->isLocked('1.2.3.4', 'unrelated@example.com'))->toBeTrue()
         ->and($service->isLocked('9.9.9.9', 'b@example.com'))->toBeTrue()
-        ->and($release->metadata)->toBe([
-            'scope_type' => 'email',
-            'scope_key' => 'a@example.com',
+        ->and(Arr::sortRecursive($release->metadata ?? []))->toBe([
             'reason' => 'successful_login',
+            'scope_key' => 'a@example.com',
+            'scope_type' => 'email',
         ]);
 });
 

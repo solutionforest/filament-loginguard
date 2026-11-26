@@ -2,6 +2,7 @@
 
 use Carbon\Carbon;
 use Illuminate\Auth\Events\Failed;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
@@ -132,11 +133,13 @@ it('unlocks the email via the confirmation flow without touching other rows', fu
     expect(isLockedFor($attacker->ip, $attacker->email))->toBeTrue();
 
     // An append-only history row was recorded.
+    $release = SecurityEvent::query()->where('type', SecurityEvent::TYPE_UNLOCKED)->sole();
+
     expect(LockoutHistory::query()->where('email', 'a@example.com')->count())->toBe(1)
-        ->and(SecurityEvent::query()->where('type', SecurityEvent::TYPE_UNLOCKED)->sole()->metadata)->toBe([
-            'scope_type' => 'email',
-            'scope_key' => 'a@example.com',
+        ->and(Arr::sortRecursive($release->metadata ?? []))->toBe([
             'reason' => 'self_unlock',
+            'scope_key' => 'a@example.com',
+            'scope_type' => 'email',
         ]);
 });
 
