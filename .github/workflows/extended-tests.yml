@@ -86,7 +86,11 @@ jobs:
       - name: Exercise concurrent production service calls
         env:
           LOGINGUARD_CONCURRENCY_PORT: ${{ job.services.mysql.ports[3306] }}
-        run: php tests/Concurrency/run.php
+        run: |
+          for iteration in 1 2 3; do
+            echo "MySQL concurrency iteration $iteration"
+            php tests/Concurrency/run.php
+          done
       - name: Execute the complete suite against MySQL
         if: success() || failure()
         env:

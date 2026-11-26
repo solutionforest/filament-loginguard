@@ -134,6 +134,23 @@ function runScenarios(string $directory): int
     $service = new LoginGuardService;
     $failures = [];
 
+    $scenario = 'same-pair-first-successes';
+
+    try {
+        $pair = ['192.0.2.6', 'first-success@example.test'];
+        $confirmed = recordConcurrently($directory, $scenario, array_fill(0, WORKER_COUNT, $pair), 20, operation: 'success');
+        [$ip, $email] = $pair;
+        $record = LoginAttempt::query()->where('ip', $ip)->where('email', $email)->sole();
+
+        requireCondition($confirmed === WORKER_COUNT, "Expected all workers to record a success, got {$confirmed}.");
+        requireCondition($record->success_count === WORKER_COUNT, "Expected eight successes, found {$record->success_count}.");
+        requireCondition($record->last_success_at?->toDateTimeString() === FROZEN_TIME, 'The success counter has an incorrect latest timestamp.');
+
+        fwrite(STDOUT, "PASS  {$scenario}\n");
+    } catch (Throwable $exception) {
+        $failures[] = "{$scenario}: " . $exception->getMessage();
+    }
+
     $unprimedPair = ['192.0.2.4', 'first-failure@example.test'];
     $activePair = ['192.0.2.1', 'active@example.test'];
     $expiredPair = ['192.0.2.2', 'expired@example.test'];
@@ -201,23 +218,6 @@ function runScenarios(string $directory): int
         } finally {
             Carbon::setTestNow(FROZEN_TIME);
         }
-    }
-
-    $scenario = 'same-pair-first-successes';
-
-    try {
-        $pair = ['192.0.2.6', 'first-success@example.test'];
-        $confirmed = recordConcurrently($directory, $scenario, array_fill(0, WORKER_COUNT, $pair), 20, operation: 'success');
-        [$ip, $email] = $pair;
-        $record = LoginAttempt::query()->where('ip', $ip)->where('email', $email)->sole();
-
-        requireCondition($confirmed === WORKER_COUNT, "Expected all workers to record a success, got {$confirmed}.");
-        requireCondition($record->success_count === WORKER_COUNT, "Expected eight successes, found {$record->success_count}.");
-        requireCondition($record->last_success_at?->toDateTimeString() === FROZEN_TIME, 'The success counter has an incorrect latest timestamp.');
-
-        fwrite(STDOUT, "PASS  {$scenario}\n");
-    } catch (Throwable $exception) {
-        $failures[] = "{$scenario}: " . $exception->getMessage();
     }
 
     foreach ($failures as $failure) {

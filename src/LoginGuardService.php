@@ -208,11 +208,17 @@ final class LoginGuardService
 
             $identity = ['ip' => $ip, 'email' => $email];
 
-            // On a concurrent first failure, createOrFirst's duplicate-key
-            // recovery must also use a locking read of the newly inserted row.
             $pair = LoginAttempt::query();
-            $pair->where($identity)->lockForUpdate();
-            $row = (clone $pair)->first() ?? $pair->createOrFirst($identity);
+            $pair->where($identity);
+
+            // Locking a missing MySQL row takes gap locks that can conflict
+            // with concurrent first inserts, even for different pairs.
+            $mayExist = ! $useCurrentScopeReads || (clone $pair)->exists();
+            $pair->lockForUpdate();
+
+            // The fallback inside createOrFirst must read under the same lock
+            // if another request created this pair after the existence check.
+            $row = ($mayExist ? (clone $pair)->first() : null) ?? $pair->createOrFirst($identity);
             $key = $row->id;
 
             // Fixed window: if the current window expired, restart it from zero. The
