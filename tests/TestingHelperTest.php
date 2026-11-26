@@ -1,6 +1,7 @@
 <?php
 
 use Livewire\Livewire;
+use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Tests\Support\TestLivewireComponent;
 
@@ -37,4 +38,18 @@ it('scopes assertions to an ip when provided', function () {
     Livewire::test(TestLivewireComponent::class)
         ->assertLoginGuardAttempts(2, 'a@example.com', '1.2.3.4')
         ->assertLoginGuardAttempts(11, 'a@example.com');
+});
+
+it('detects a pair lock only for the matching email and ip', function () {
+    config()->set('filament-loginguard.lockout.max_attempts', 1);
+    config()->set('filament-loginguard.lockout.tracking.per_ip', false);
+    config()->set('filament-loginguard.lockout.tracking.per_email', false);
+
+    app(LoginGuardService::class)->recordFailure('1.2.3.4', 'a@example.com');
+
+    Livewire::test(TestLivewireComponent::class)
+        ->assertLoginGuardLocked('a@example.com', '1.2.3.4')
+        ->assertLoginGuardNotLocked('a@example.com', '5.6.7.8')
+        ->assertLoginGuardNotLocked('b@example.com', '1.2.3.4')
+        ->assertLoginGuardNotLocked('a@example.com');
 });

@@ -40,10 +40,10 @@ function chartData(FailureTrendChart | TopAttackedEmailsChart | TopSourceIpsChar
     return $method->invoke($widget);
 }
 
-function recordFailureEvent(string $ip, string $email, Carbon $at): void
+function recordChartEvent(?string $ip, ?string $email, Carbon $at, string $type = SecurityEvent::TYPE_LOGIN_FAILED): void
 {
     SecurityEvent::query()->create([
-        'type' => SecurityEvent::TYPE_LOGIN_FAILED,
+        'type' => $type,
         'ip' => $ip,
         'email' => $email,
         'occurred_at' => $at,
@@ -52,9 +52,9 @@ function recordFailureEvent(string $ip, string $email, Carbon $at): void
 
 it('charts the daily failure trend inside the selected window', function () {
     // Two failures two days ago; one 40 days ago (outside the 30-day range).
-    recordFailureEvent('1.2.3.4', 'a@example.com', now()->subDays(2)->addHours(3));
-    recordFailureEvent('1.2.3.4', 'a@example.com', now()->subDays(2)->addHours(4));
-    recordFailureEvent('1.2.3.4', 'b@example.com', now()->subDays(40));
+    recordChartEvent('1.2.3.4', 'a@example.com', now()->subDays(2)->addHours(3));
+    recordChartEvent('1.2.3.4', 'a@example.com', now()->subDays(2)->addHours(4));
+    recordChartEvent('1.2.3.4', 'b@example.com', now()->subDays(40));
 
     $chart = Livewire::test(FailureTrendChart::class, ['filter' => '30']);
     $data = chartData($chart->instance());
@@ -68,34 +68,37 @@ it('charts the daily failure trend inside the selected window', function () {
         ->and($values[count($values) - 3])->toBe(2);
 });
 
-it('limits the trend to 7 days with the filter', function () {
-    recordFailureEvent('1.2.3.4', 'a@example.com', now()->subDays(10));
+it('updates the trend to seven calendar days and counts only failures', function () {
+    recordChartEvent(null, null, now()->subDays(6));
+    recordChartEvent('1.2.3.4', 'a@example.com', now()->subDays(6)->subSecond());
+    recordChartEvent('1.2.3.4', 'a@example.com', now(), SecurityEvent::TYPE_LOGIN_SUCCEEDED);
+    recordChartEvent('1.2.3.4', 'a@example.com', now());
 
-    $chart = Livewire::test(FailureTrendChart::class, ['filter' => '7']);
+    $chart = Livewire::test(FailureTrendChart::class)->set('filter', '7');
     $data = chartData($chart->instance());
 
-    expect(count($data['labels']))->toBe(7)
-        ->and(array_sum($data['datasets'][0]['data']))->toBe(0);
+    expect($data['labels'])->toBe(['12-26', '12-27', '12-28', '12-29', '12-30', '12-31', '01-01'])
+        ->and($data['datasets'][0]['data'])->toBe([1, 0, 0, 0, 0, 0, 1]);
 });
 
-it('ignores invalid filter values', function () {
-    recordFailureEvent('1.2.3.4', 'a@example.com', now()->subDays(10));
+it('falls back to 30 days when the trend filter is missing or unsupported', function (?string $filter) {
+    recordChartEvent('1.2.3.4', 'a@example.com', now()->subDays(10));
 
-    $chart = Livewire::test(FailureTrendChart::class, ['filter' => '999']);
+    $chart = Livewire::test(FailureTrendChart::class, ['filter' => $filter]);
     $data = chartData($chart->instance());
 
     // Falls back to 30 days, so the 10-day-old failure is included.
     expect(count($data['labels']))->toBe(30)
         ->and(array_sum($data['datasets'][0]['data']))->toBe(1);
-});
+})->with(['missing' => [null], 'unsupported' => ['999']]);
 
 it('aggregates the top attacked emails across source ips', function () {
     // The same victim attacked from three different IPs: one combined total.
-    recordFailureEvent('1.1.1.1', 'victim@example.com', now()->subHour());
-    recordFailureEvent('2.2.2.2', 'victim@example.com', now()->subHour());
-    recordFailureEvent('3.3.3.3', 'victim@example.com', now()->subHours(2));
+    recordChartEvent('1.1.1.1', 'victim@example.com', now()->subHour());
+    recordChartEvent('2.2.2.2', 'victim@example.com', now()->subHour());
+    recordChartEvent('3.3.3.3', 'victim@example.com', now()->subHours(2));
     // A fresh event 3 days back must not count in the 24h leaderboard.
-    recordFailureEvent('1.1.1.1', 'stale@example.com', now()->subDays(3));
+    recordChartEvent('1.1.1.1', 'stale@example.com', now()->subDays(3));
 
     $chart = Livewire::test(TopAttackedEmailsChart::class);
     $data = chartData($chart->instance());
@@ -105,9 +108,9 @@ it('aggregates the top attacked emails across source ips', function () {
 });
 
 it('aggregates the top source ips across attacked emails', function () {
-    recordFailureEvent('1.1.1.1', 'a@example.com', now()->subHour());
-    recordFailureEvent('1.1.1.1', 'b@example.com', now()->subHour());
-    recordFailureEvent('2.2.2.2', 'a@example.com', now()->subHour());
+    recordChartEvent('1.1.1.1', 'a@example.com', now()->subHour());
+    recordChartEvent('1.1.1.1', 'b@example.com', now()->subHour());
+    recordChartEvent('2.2.2.2', 'a@example.com', now()->subHour());
 
     $chart = Livewire::test(TopSourceIpsChart::class);
     $data = chartData($chart->instance());
@@ -115,6 +118,30 @@ it('aggregates the top source ips across attacked emails', function () {
     expect($data['labels'])->toBe(['1.1.1.1', '2.2.2.2'])
         ->and($data['datasets'][0]['data'])->toBe([2, 1]);
 });
+
+it('ranks ten named groups using only failures inside the last 24 hours', function (string $widget, string $labelTemplate) {
+    for ($count = 1; $count <= 11; $count++) {
+        for ($event = 0; $event < $count; $event++) {
+            recordChartEvent("10.0.0.{$count}", "target-{$count}@example.com", now()->subDay());
+        }
+    }
+
+    for ($event = 0; $event < 12; $event++) {
+        recordChartEvent(null, null, now());
+    }
+
+    recordChartEvent('10.0.0.11', 'target-11@example.com', now()->subDay()->subSecond());
+    recordChartEvent('10.0.0.11', 'target-11@example.com', now(), SecurityEvent::TYPE_LOGIN_SUCCEEDED);
+    recordChartEvent('10.0.0.11', 'target-11@example.com', now(), SecurityEvent::TYPE_LOCKOUT_STARTED);
+
+    $data = chartData(Livewire::test($widget)->instance());
+
+    expect($data['labels'])->toBe(array_map(fn (int $count) => sprintf($labelTemplate, $count), range(11, 2)))
+        ->and($data['datasets'][0]['data'])->toBe([11, 10, 9, 8, 7, 6, 5, 4, 3, 2]);
+})->with([
+    'attacked emails' => [TopAttackedEmailsChart::class, 'target-%d@example.com'],
+    'source IPs' => [TopSourceIpsChart::class, '10.0.0.%d'],
+]);
 
 it('registers the charts on the admin page by default', function () {
     LoginAttempt::query()->create([

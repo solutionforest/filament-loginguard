@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Testing\Assert;
 use Livewire\Component;
 use Livewire\Features\SupportTesting\Testable;
+use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
-use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
 
 /**
  * @mixin Testable<Component>
@@ -36,14 +36,7 @@ class TestsFilamentLoginGuard
     public function assertLoginGuardLocked(): Closure
     {
         return function (string $email, ?string $ip = null): static {
-            $locked = LoginGuardLock::activeQuery()
-                ->where('scope_type', LoginGuardLock::SCOPE_EMAIL)
-                ->where('scope_key', $email)
-                ->exists()
-                || ($ip !== null && LoginGuardLock::activeQuery()
-                    ->where('scope_type', LoginGuardLock::SCOPE_IP)
-                    ->where('scope_key', $ip)
-                    ->exists());
+            $locked = app(LoginGuardService::class)->lockFor($ip, $email) !== null;
 
             Assert::assertTrue(
                 $locked,
@@ -57,14 +50,7 @@ class TestsFilamentLoginGuard
     public function assertLoginGuardNotLocked(): Closure
     {
         return function (string $email, ?string $ip = null): static {
-            $locked = LoginGuardLock::activeQuery()
-                ->where('scope_type', LoginGuardLock::SCOPE_EMAIL)
-                ->where('scope_key', $email)
-                ->exists()
-                || ($ip !== null && LoginGuardLock::activeQuery()
-                    ->where('scope_type', LoginGuardLock::SCOPE_IP)
-                    ->where('scope_key', $ip)
-                    ->exists());
+            $locked = app(LoginGuardService::class)->lockFor($ip, $email) !== null;
 
             Assert::assertFalse(
                 $locked,

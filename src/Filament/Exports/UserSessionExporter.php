@@ -20,8 +20,10 @@ class UserSessionExporter extends Exporter
         return [
             ExportColumn::make('user_email')
                 ->preventFormulaInjection(),
-            ExportColumn::make('ip_address'),
-            ExportColumn::make('device_name'),
+            ExportColumn::make('ip_address')
+                ->preventFormulaInjection(),
+            ExportColumn::make('device_name')
+                ->preventFormulaInjection(),
             ExportColumn::make('last_active_at'),
             ExportColumn::make('is_new_device'),
         ];
@@ -37,7 +39,7 @@ class UserSessionExporter extends Exporter
 
     public function getFileName(Export $export): string
     {
-        return 'user-sessions-' . filament_loginguard_identifier($export->getKey()) . '.csv';
+        return 'user-sessions-' . filament_loginguard_identifier($export->getKey());
     }
 
     public static function getCompletedNotificationBody(Export $export): string

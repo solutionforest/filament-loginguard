@@ -5,19 +5,26 @@ namespace SolutionForest\FilamentLoginGuard\Listeners;
 use Illuminate\Auth\Events\Attempting;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\SessionGuard;
+use Illuminate\Foundation\Http\Events\RequestHandled;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use SolutionForest\FilamentLoginGuard\Events\LoginLockedOut;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
+use SolutionForest\FilamentLoginGuard\Models\Device;
 use SolutionForest\FilamentLoginGuard\Models\LocationHistory;
 use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 use SolutionForest\FilamentLoginGuard\Services\DeviceManager;
 use SolutionForest\FilamentLoginGuard\Services\IpIntelligence;
 use SolutionForest\FilamentLoginGuard\Support\IpAddress;
 use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class AuthenticationListener
 {
+    private const PENDING_DEVICES = 'filament-loginguard.login-devices';
+
     public function __construct(
         protected LoginGuardService $service,
         protected DeviceManager $deviceManager,
@@ -162,8 +169,11 @@ class AuthenticationListener
             $metadata,
         );
 
+        $trackDevice = (bool) config('filament-loginguard.devices.enabled', true) && $userId !== null;
+        $notifyByIdentity = $trackDevice && (bool) config('filament-loginguard.devices.notifications.new_device', false);
+
         if ($sessionsEnabled && $userIdInt !== null) {
-            $this->service->recordDevice($userIdInt, request()->userAgent(), $email);
+            $this->service->recordDevice($userIdInt, request()->userAgent(), $notifyByIdentity ? null : $email);
             $this->service->enforceConcurrentLimit($userIdInt);
         }
 
@@ -171,19 +181,74 @@ class AuthenticationListener
         // the opaque cookie token, then map this session onto it. Gated by
         // `devices.enabled`; non-numeric identifiers (UUID/ULID users) still
         // get device tracking via the string identifier column.
-        if ((bool) config('filament-loginguard.devices.enabled', true) && $userId !== null) {
-            [$device] = $this->deviceManager->resolveOrCreate(
+        if ($trackDevice) {
+            [$device, $isNew] = $this->deviceManager->resolveOrCreate(
                 $event->user,
                 $event->guard,
                 request()->userAgent(),
                 $ip,
             );
 
-            $sessionId = filament_loginguard_session_id();
+            // StartSession persists the final ID after Fortify or Filament
+            // finishes regenerating the session during the login request.
+            if (request()->hasSession()) {
+                $pending = request()->attributes->all(self::PENDING_DEVICES);
+                $pending[$event->guard] = $device;
+                request()->attributes->set(self::PENDING_DEVICES, $pending);
+            } else {
+                $sessionId = filament_loginguard_session_id();
 
-            if (filled($sessionId)) {
-                $this->deviceManager->associateSession($device, $event->guard, $sessionId);
+                if (filled($sessionId)) {
+                    $this->deviceManager->associateSession($device, $event->guard, $sessionId);
+                }
             }
+
+            if ($notifyByIdentity && $isNew) {
+                try {
+                    $this->deviceManager->notifyNewDevice($device, $email);
+                } catch (TransportExceptionInterface $exception) {
+                    report($exception);
+                }
+            }
+        }
+    }
+
+    public function handleRequestHandled(RequestHandled $event): void
+    {
+        $request = $event->request;
+        $pending = $request->attributes->all(self::PENDING_DEVICES);
+        if ($pending === []) {
+            return;
+        }
+
+        $session = $request->session();
+        $devices = [];
+
+        foreach ($pending as $guard => $device) {
+            if (! $device instanceof Device || $device->guard !== (string) $guard) {
+                continue;
+            }
+
+            $auth = Auth::guard($device->guard);
+            if (! $auth instanceof SessionGuard) {
+                continue;
+            }
+
+            $identifier = filament_loginguard_identifier($session->get($auth->getName()));
+            if ($identifier === '' || $identifier !== $device->user_identifier) {
+                continue;
+            }
+
+            // Reading the cached user avoids starting a remember-me login after
+            // the response's session has already been saved.
+            $user = $auth->getUser() ?? $auth->getProvider()->retrieveById($identifier);
+            if ($user !== null && $user::class === $device->user_type && filament_loginguard_identifier($user->getAuthIdentifier()) === $identifier) {
+                $devices[] = $device;
+            }
+        }
+
+        if ($devices !== [] && ! $this->deviceManager->associatePersistedSession($devices, $session->getId())) {
+            $session->getHandler()->destroy($session->getId());
         }
     }
 

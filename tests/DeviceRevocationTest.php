@@ -254,3 +254,22 @@ it('does not revoke another users device through a forged action argument', func
         ->and($target->refresh()->revoked_at)->toBeNull()
         ->and(SecurityEvent::query()->where('type', SecurityEvent::TYPE_DEVICE_REVOKED)->count())->toBe(0);
 });
+
+it('rotates the owners shared remember token while preserving unrelated credentials and current sessions', function () {
+    $owner = UserFactory::new()->create(['remember_token' => Str::random(60)]);
+    $otherUser = UserFactory::new()->create(['remember_token' => Str::random(60)]);
+    $oldToken = $owner->getRememberToken();
+    $unrelatedToken = $otherUser->getRememberToken();
+    $provider = Auth::guard('web')->getProvider();
+    expect($provider->retrieveByToken($owner->getKey(), $oldToken)->is($owner))->toBeTrue();
+    [$target] = makeDeviceForRevocation($owner);
+    [$current] = makeDeviceForRevocation($owner);
+    persistSessionForRevocation($current, session()->getId());
+
+    app(DeviceManager::class)->revoke($target);
+
+    expect($owner->refresh()->getRememberToken())->not->toBe($oldToken)
+        ->and($provider->retrieveByToken($owner->getKey(), $oldToken))->toBeNull()
+        ->and($provider->retrieveByToken($otherUser->getKey(), $unrelatedToken)->is($otherUser))->toBeTrue()
+        ->and(freshGuardForRevocation(session()->getId())->id())->toBe($owner->getAuthIdentifier());
+});

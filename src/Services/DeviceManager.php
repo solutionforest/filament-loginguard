@@ -2,14 +2,17 @@
 
 namespace SolutionForest\FilamentLoginGuard\Services;
 
+use Illuminate\Auth\SessionGuard;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 use SolutionForest\FilamentLoginGuard\Models\Device;
 use SolutionForest\FilamentLoginGuard\Models\DeviceSession;
 use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
@@ -56,7 +59,6 @@ class DeviceManager
         }
 
         if ($knownDevice === null) {
-            $isNew = true;
             $rawToken = $rawToken ?? DeviceCookie::generateToken();
 
             $knownDevice = $this->createDevice(
@@ -70,8 +72,13 @@ class DeviceManager
                 $now,
             );
 
+            $isNew = $knownDevice->wasRecentlyCreated;
             DeviceCookie::queue($rawToken);
+        } else {
+            $isNew = false;
+        }
 
+        if ($isNew) {
             $email = null;
 
             if ($user instanceof Model) {
@@ -88,13 +95,11 @@ class DeviceManager
                 $deviceName,
                 ['device_id' => $knownDevice->id],
             );
-        } else {
-            $isNew = false;
         }
 
         $this->markSeen($knownDevice, $ip, $userAgent, $deviceName, $now);
 
-        $this->enforceDeviceCap($user, $guard);
+        $this->pruneInactiveDevices($user, $guard, $knownDevice->id);
 
         return [$knownDevice, $isNew];
     }
@@ -109,6 +114,36 @@ class DeviceManager
             ['device_id' => $device->id, 'session_id' => $sessionId],
             ['guard' => $guard, 'last_seen_at' => Carbon::now()],
         );
+    }
+
+    /**
+     * Associate every guard authenticated in a persisted session together.
+     * If an identity was removed or revoked during login, reject the session.
+     *
+     * @param  list<Device>  $devices
+     */
+    public function associatePersistedSession(array $devices, string $sessionId): bool
+    {
+        return DB::connection()->transaction(function () use ($devices, $sessionId): bool {
+            $ids = array_map(fn (Device $device): int => $device->id, $devices);
+            $lockedDevices = $this->lockDevices(Device::query()->whereKey($ids))->keyBy('id');
+
+            foreach ($devices as $device) {
+                $current = $lockedDevices->get($device->id);
+                if ($current === null || $current->isRevoked()
+                    || $current->guard !== $device->guard
+                    || $current->user_type !== $device->user_type
+                    || $current->user_identifier !== $device->user_identifier) {
+                    return false;
+                }
+            }
+
+            foreach ($lockedDevices as $device) {
+                $this->associateSession($device, $device->guard, $sessionId);
+            }
+
+            return true;
+        });
     }
 
     /**
@@ -152,7 +187,11 @@ class DeviceManager
     {
         $currentSessionId = filament_loginguard_session_id();
 
-        DB::transaction(function () use ($device, $currentSessionId): void {
+        $revoked = DB::transaction(function () use ($device, $currentSessionId): bool {
+            if ($this->lockDevices(Device::query()->whereKey($device->id))->isEmpty()) {
+                return false;
+            }
+
             // Do not trust a client-supplied device hash to protect the current
             // session: check its server-side mapping before deleting anything.
             abort_if(
@@ -164,11 +203,27 @@ class DeviceManager
             // relationship would leave the authenticated session rows alive.
             $this->signOutDevice($device, $currentSessionId);
 
-            $device->forceFill([
+            // SessionGuard shares one remember token across the account's
+            // devices. Rotate it on explicit revocation, leaving live sessions
+            // on other devices untouched.
+            $guard = Auth::guard($device->guard);
+            if ($guard instanceof SessionGuard) {
+                $provider = $guard->getProvider();
+                $owner = $provider->retrieveById($device->user_identifier);
+                if ($owner !== null && $owner::class === $device->user_type && filled($owner->getRememberToken())) {
+                    $provider->updateRememberToken($owner, Str::random(60));
+                }
+            }
+
+            return $device->forceFill([
                 'revoked_at' => Carbon::now(),
                 'trusted_at' => null,
             ])->save();
         });
+
+        if (! $revoked) {
+            return;
+        }
 
         SecurityEvent::record(SecurityEvent::TYPE_DEVICE_REVOKED, null, null, null, $device->guard, $device->device_name, [
             'device_id' => $device->id,
@@ -182,7 +237,19 @@ class DeviceManager
      */
     public function forget(Device $device): void
     {
-        $device->delete();
+        $forgotten = DB::transaction(function () use ($device): bool {
+            if ($this->lockDevices(Device::query()->whereKey($device->id))->isEmpty()) {
+                return false;
+            }
+
+            abort_if($device->hasActiveSessions(), 409);
+
+            return $device->delete() === true;
+        });
+
+        if (! $forgotten) {
+            return;
+        }
 
         SecurityEvent::record(SecurityEvent::TYPE_DEVICE_FORGOTTEN, null, null, null, $device->guard, $device->device_name, [
             'device_id' => $device->id,
@@ -260,6 +327,11 @@ class DeviceManager
      */
     public function enforceDeviceCap(Authenticatable $user, string $guard): void
     {
+        $this->pruneInactiveDevices($user, $guard, null);
+    }
+
+    private function pruneInactiveDevices(Authenticatable $user, string $guard, ?int $currentDeviceId): void
+    {
         $cap = filament_loginguard_config_int('filament-loginguard.devices.max_devices_per_user', 20);
 
         if ($cap <= 0) {
@@ -269,19 +341,35 @@ class DeviceManager
         $userType = $user::class;
         $identifier = filament_loginguard_identifier($user->getAuthIdentifier());
 
-        /** @var Collection<int, Device> $devices */
-        $devices = $this->devicesFor($guard, $userType, $identifier)
-            ->whereNull('revoked_at')
-            ->orderByDesc('last_seen_at')
-            ->get();
+        $devices = $this->devicesFor($guard, $userType, $identifier);
+        $devices->whereNull('revoked_at');
+        $excess = $devices->count() - $cap;
 
-        if ($devices->count() <= $cap) {
+        if ($excess <= 0) {
             return;
         }
 
-        // Remove the least-recently-seen devices that have no sessions.
-        $devices->slice($cap)
-            ->each(fn (Device $device) => $device->delete());
+        if ($currentDeviceId !== null) {
+            $devices->where('id', '!=', $currentDeviceId);
+        }
+
+        $devices->whereDoesntHave('sessions', function (Builder $query): void {
+            // Other session drivers cannot be checked against the database.
+            if (config('session.driver') === 'database') {
+                $query->whereIn('session_id', DeviceSession::liveSessionIds());
+            }
+        });
+
+        $ids = (clone $devices)->oldest('last_seen_at')->oldest('id')->limit($excess)->pluck('id');
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        DB::transaction(function () use ($devices, $ids): void {
+            $this->lockDevices(Device::query()->whereKey($ids));
+            // Recheck eligibility after acquiring the same locks as login finalization.
+            $devices->whereKey($ids)->delete();
+        });
     }
 
     /**
@@ -290,16 +378,11 @@ class DeviceManager
      */
     public function cleanup(): void
     {
-        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
-
-        // Mappings pointing at dead sessions.
-        DeviceSession::query()
-            ->whereNotExists(function (\Illuminate\Database\Query\Builder $query) use ($sessionsTable): void {
-                $query->selectRaw('1')
-                    ->from($sessionsTable)
-                    ->whereColumn($sessionsTable . '.id', 'filament_loginguard_device_sessions.session_id');
-            })
-            ->delete();
+        if (config('session.driver') === 'database') {
+            DeviceSession::query()
+                ->whereNotIn('session_id', DeviceSession::liveSessionIds())
+                ->delete();
+        }
 
         $retentionDays = filament_loginguard_config_int('filament-loginguard.devices.retention_days', 90);
 
@@ -322,6 +405,25 @@ class DeviceManager
             ->where('guard', $guard)
             ->where('user_type', $userType)
             ->where('user_identifier', $identifier);
+    }
+
+    /**
+     * Lock device rows in the active transaction before inspecting their mappings.
+     *
+     * @param  Builder<Device>  $devices
+     * @return Collection<int, Device>
+     */
+    private function lockDevices(Builder $devices): Collection
+    {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            // A write first prevents a deferred read transaction from losing
+            // its chance to acquire SQLite's writer lock.
+            (clone $devices)->toBase()->update(['updated_at' => DB::raw('updated_at')]);
+        }
+
+        $devices->orderBy('id')->lockForUpdate();
+
+        return $devices->get();
     }
 
     private function findByToken(string $guard, string $userType, string $identifier, string $rawToken): ?Device

@@ -6,6 +6,9 @@ All notable changes to `filament-loginguard` will be documented in this file.
 
 ### Added
 
+- Feature regressions for correct-password lockouts and expiry, independent page/action permissions, actual CSV downloads and values, statistics/chart boundaries, cookie identities, session lifecycle and retention, and real MaxMind fixture lookups. MaxMind's synthetic MIT-licensed test databases are included with upstream attribution; production GeoLite databases are not bundled.
+- Extended CI for strict MySQL 8.4 integration, independent-process concurrency on SQLite and MySQL, Chromium login/device workflows, and downloadable PCOV coverage reports.
+
 - **IP intelligence (GeoIP enrichment) foundation** — the first, independently-shippable layer for risk-based login. It only *produces* signals; it never blocks or challenges a login on its own.
   - `IpLocation` value object (country / country name / city / subdivision / latitude / longitude / accuracy radius / ASN / ASN organization) and an `IpIntelligence` interface with a single `MaxmindIpIntelligence` implementation that reads local GeoLite2-Country / -City / -ASN `.mmdb` files. The `Reader` is cached per database kind, guarded by `class_exists()` (the package is optional) and degrades silently to `null` on any error — IP intelligence can never break the login flow.
   - `ip_intel` config section: `enabled` (default **`false`**), `databases.{country,city,asn}` (each optional), and `novelty_window_days` (default `90`).
@@ -14,6 +17,16 @@ All notable changes to `filament-loginguard` will be documented in this file.
   - `geoip2/geoip2` added to `suggest` (and `require-dev` for tests/analysis).
   - `filament-loginguard:ip-intel:test` diagnostic command — reports whether the feature is enabled, whether `geoip2/geoip2` is installed, each database's path/state, and the resolved signals for a test IP (exit code `1` when nothing resolves).
   - **Country badge** on the Login Attempts admin table: each IP shows its most recently resolved country (ISO code), eager-loaded via an of-many relationship. ASN is deliberately not shown.
+
+### Fixed
+
+- Cookie-identity new-device notifications now honour `devices.notifications`, including its queue setting, and avoid duplicate legacy fingerprint notifications when both systems are enabled.
+- Device caps and cleanup retain live sessions, remove eligible inactive identities, and reject forgetting a device that has become active. Device-cookie deletion now uses the same root path as creation.
+- Device/session association uses the final session ID persisted after Fortify or Filament finishes login. Explicit device revocation rotates the account's Laravel remember token, preventing an old remember cookie from restoring access. Other devices' existing sessions remain signed in; all previously issued remember cookies for that account become invalid.
+- SQLite failures acquire the write reservation before reading the attempt row, preventing concurrent failures from losing their read-to-write upgrade with `database is locked`.
+- Attempt windows roll over at the exact configured boundary and reset their start on successful login. Long User-Agent values fit the 255-character column, including the truncation marker. IPv4-mapped IPv6 addresses normalize consistently across equivalent representations. Testing helpers now include exact-pair locks.
+- Attempt CSV exports show the furthest applicable active scoped lock expiry, clear expired values, and avoid duplicate `.csv` extensions. Both exporters defensively escape formula-leading IP and device display fields as well as email fields.
+- The device identity unique index uses a name within MySQL's identifier limit, allowing fresh MySQL migrations to run. Existing installed indexes do not need renaming.
 
 ### Changed
 

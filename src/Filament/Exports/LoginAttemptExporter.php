@@ -6,6 +6,7 @@ use Filament\Actions\Exports\Enums\ExportFormat;
 use Filament\Actions\Exports\ExportColumn;
 use Filament\Actions\Exports\Exporter;
 use Filament\Actions\Exports\Models\Export;
+use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 
 class LoginAttemptExporter extends Exporter
@@ -18,13 +19,16 @@ class LoginAttemptExporter extends Exporter
     public static function getColumns(): array
     {
         return [
-            ExportColumn::make('ip'),
+            ExportColumn::make('ip')
+                ->preventFormulaInjection(),
             ExportColumn::make('email')
                 ->preventFormulaInjection(),
-            ExportColumn::make('device_name'),
+            ExportColumn::make('device_name')
+                ->preventFormulaInjection(),
             ExportColumn::make('attempts'),
             ExportColumn::make('lockout_count'),
-            ExportColumn::make('locked_until'),
+            ExportColumn::make('locked_until')
+                ->state(fn (LoginAttempt $record): ?string => app(LoginGuardService::class)->lockFor($record->ip, $record->email)?->toDateTimeString()),
             ExportColumn::make('last_attempt_at'),
             ExportColumn::make('success_count'),
             ExportColumn::make('last_success_at'),
@@ -41,7 +45,7 @@ class LoginAttemptExporter extends Exporter
 
     public function getFileName(Export $export): string
     {
-        return 'login-attempts-' . filament_loginguard_identifier($export->getKey()) . '.csv';
+        return 'login-attempts-' . filament_loginguard_identifier($export->getKey());
     }
 
     public static function getCompletedNotificationBody(Export $export): string

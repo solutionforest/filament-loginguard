@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Auth;
 final class AuthorizesPages
 {
     /**
-     * Check a gate ability for the current user. A blank ability (or a missing
-     * ability that defaults to allowed in Laravel's Gate) passes.
+     * A blank ability allows access. A configured ability is checked against
+     * the current user's authorization rules.
      */
     public static function allows(?string $ability): bool
     {

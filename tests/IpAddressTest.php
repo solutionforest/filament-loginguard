@@ -10,9 +10,13 @@ it('returns an empty string for null and blank input', function (?string $input)
     ['   '],
 ]);
 
-it('reduces an IPv4-mapped IPv6 address to plain IPv4', function () {
-    expect(IpAddress::normalize('::ffff:1.2.3.4'))->toBe('1.2.3.4');
-});
+it('reduces an IPv4-mapped IPv6 address to plain IPv4', function (string $ip) {
+    expect(IpAddress::normalize($ip))->toBe('1.2.3.4');
+})->with([
+    'dotted' => '::ffff:1.2.3.4',
+    'uppercase' => '::FFFF:1.2.3.4',
+    'hexadecimal' => '0:0:0:0:0:FFFF:0102:0304',
+]);
 
 it('canonicalizes IPv6 representation', function (string $input, string $expected) {
     expect(IpAddress::normalize($input))->toBe($expected);

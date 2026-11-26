@@ -15,6 +15,7 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Routing\Router;
 use Livewire\Features\SupportTesting\Testable;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupAttemptsCommand;
@@ -130,6 +131,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
         $events->listen(Attempting::class, [AuthenticationListener::class, 'handleAttempting']);
         $events->listen(Failed::class, [AuthenticationListener::class, 'handleFailed']);
         $events->listen(Login::class, [AuthenticationListener::class, 'handleLogin']);
+        $events->listen(RequestHandled::class, [AuthenticationListener::class, 'handleRequestHandled']);
 
         $this->registerScheduledTasks();
     }

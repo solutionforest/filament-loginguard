@@ -144,6 +144,129 @@ it('gates the page behind an ability when configured', function () {
     Livewire::test(LoginGuard::class)->assertSuccessful();
 });
 
+it('uses the view-specific ability ahead of the legacy attempts ability', function () {
+    config()->set('filament-loginguard.pages.attempts.authorize', 'manage-attempts');
+    config()->set('filament-loginguard.pages.attempts.authorize_view', 'view-attempts');
+    config()->set('filament-loginguard.pages.attempts.authorize_unblock', 'unblock-attempts');
+    Gate::define('manage-attempts', fn (): bool => true);
+    Gate::define('unblock-attempts', fn (): bool => true);
+
+    Livewire::test(LoginGuard::class)->assertStatus(403);
+
+    Gate::define('view-attempts', fn (): bool => true);
+
+    Livewire::test(LoginGuard::class)->assertSuccessful();
+});
+
+it('enforces the separate unblock ability for individual and bulk actions', function (bool $defineDeniedAbility) {
+    config()->set('filament-loginguard.pages.attempts.authorize', 'manage-attempts');
+    config()->set('filament-loginguard.pages.attempts.authorize_view', 'view-attempts');
+    config()->set('filament-loginguard.pages.attempts.authorize_unblock', 'unblock-attempts');
+    Gate::define('manage-attempts', fn (): bool => true);
+    Gate::define('view-attempts', fn (): bool => true);
+
+    if ($defineDeniedAbility) {
+        Gate::define('unblock-attempts', fn (): bool => false);
+    }
+
+    $first = LoginAttempt::factory()->locked(ip: '1.2.3.4', email: 'a@example.com', lockedUntil: now()->addMinutes(15))->create();
+    $second = LoginAttempt::factory()->locked(ip: '5.6.7.8', email: 'b@example.com', lockedUntil: now()->addMinutes(15))->create();
+    $service = app(LoginGuardService::class);
+
+    Livewire::test(LoginGuard::class)
+        ->assertCanSeeTableRecords([$first, $second])
+        ->assertTableActionHidden('unblock', $first)
+        ->assertTableBulkActionHidden('unblockMany')
+        ->mountTableAction('unblock', $first)
+        ->assertActionNotMounted('unblock')
+        ->mountTableBulkAction('unblockMany', [$first, $second])
+        ->assertActionNotMounted('unblockMany');
+
+    expect($service->isLocked($first->ip, $first->email))->toBeTrue()
+        ->and($service->isLocked($second->ip, $second->email))->toBeTrue();
+
+    Gate::define('unblock-attempts', fn (): bool => true);
+
+    Livewire::test(LoginGuard::class)
+        ->assertTableActionVisible('unblock', $first)
+        ->assertTableBulkActionVisible('unblockMany')
+        ->callTableAction('unblock', $first);
+
+    expect($service->isLocked($first->ip, $first->email))->toBeFalse()
+        ->and($service->isLocked($second->ip, $second->email))->toBeTrue();
+})->with([
+    'denied gate' => [true],
+    'undefined gate' => [false],
+]);
+
+it('bulk unblocks selected records across lock scopes and preserves unselected locks', function () {
+    $aggregate = LoginAttempt::factory()->locked(ip: '1.2.3.4', email: 'a@example.com', lockedUntil: now()->addMinutes(15))->create();
+    $pair = LoginAttempt::factory()->create(['ip' => '5.6.7.8', 'email' => 'b@example.com', 'attempts' => 3]);
+    $unselected = LoginAttempt::factory()->locked(ip: '9.9.9.9', email: 'c@example.com', lockedUntil: now()->addMinutes(15))->create();
+    LoginGuardLock::query()->create([
+        'scope_type' => 'pair',
+        'scope_key' => '5.6.7.8|b@example.com',
+        'locked_until' => now()->addMinutes(15),
+        'escalation_count' => 1,
+    ]);
+
+    Livewire::test(LoginGuard::class)
+        ->callTableBulkAction('unblockMany', [$aggregate, $pair]);
+
+    $service = app(LoginGuardService::class);
+
+    expect($service->isLocked($aggregate->ip, $aggregate->email))->toBeFalse()
+        ->and($service->isLocked($pair->ip, $pair->email))->toBeFalse()
+        ->and($service->isLocked($unselected->ip, $unselected->email))->toBeTrue()
+        ->and(LoginAttempt::query()->count())->toBe(3)
+        ->and(SecurityEvent::query()->where('type', SecurityEvent::TYPE_UNLOCKED)->count())->toBe(3);
+});
+
+it('filters attempt rows by active scoped locks and by failed attempts', function () {
+    $ipLocked = LoginAttempt::factory()->create(['ip' => '1.2.3.4', 'email' => 'a@example.com', 'attempts' => 1]);
+    $emailLocked = LoginAttempt::factory()->create(['ip' => '5.6.7.8', 'email' => 'b@example.com', 'attempts' => 1]);
+    $pairLocked = LoginAttempt::factory()->create(['ip' => '9.9.9.9', 'email' => 'c@example.com', 'attempts' => 1]);
+    $tracked = LoginAttempt::factory()->create(['ip' => '9.9.9.9', 'email' => 'd@example.com', 'attempts' => 2]);
+    $successful = LoginAttempt::factory()->create(['ip' => '6.6.6.6', 'email' => 'e@example.com', 'success_count' => 1]);
+
+    foreach ([
+        ['ip', '1.2.3.4', now()->addMinute()],
+        ['email', 'b@example.com', now()->addMinute()],
+        ['pair', '9.9.9.9|c@example.com', now()->addMinute()],
+        ['email', 'd@example.com', now()],
+    ] as [$scope, $key, $lockedUntil]) {
+        LoginGuardLock::query()->create([
+            'scope_type' => $scope,
+            'scope_key' => $key,
+            'locked_until' => $lockedUntil,
+            'escalation_count' => 1,
+        ]);
+    }
+
+    Livewire::test(LoginGuard::class)
+        ->filterTable('status', 'locked')
+        ->assertCanSeeTableRecords([$ipLocked, $emailLocked, $pairLocked])
+        ->assertCanNotSeeTableRecords([$tracked, $successful])
+        ->filterTable('status', 'tracked')
+        ->assertCanSeeTableRecords([$ipLocked, $emailLocked, $pairLocked, $tracked])
+        ->assertCanNotSeeTableRecords([$successful]);
+});
+
+it('orders attempt rows by latest failure and searches by ip or email', function () {
+    $oldest = LoginAttempt::factory()->create(['ip' => '1.2.3.4', 'email' => 'old@example.com', 'last_attempt_at' => now()->subMinutes(5)]);
+    $newest = LoginAttempt::factory()->create(['ip' => '5.6.7.8', 'email' => 'new@example.com', 'last_attempt_at' => now()]);
+    $middle = LoginAttempt::factory()->create(['ip' => '9.9.9.9', 'email' => 'other@example.com', 'last_attempt_at' => now()->subMinute()]);
+
+    Livewire::test(LoginGuard::class)
+        ->assertCanSeeTableRecords([$newest, $middle, $oldest], inOrder: true)
+        ->searchTable('5.6.7.8')
+        ->assertCanSeeTableRecords([$newest])
+        ->assertCanNotSeeTableRecords([$middle, $oldest])
+        ->searchTable('other@example.com')
+        ->assertCanSeeTableRecords([$middle])
+        ->assertCanNotSeeTableRecords([$newest, $oldest]);
+});
+
 it('hides navigation when disabled', function () {
     config()->set('filament-loginguard.pages.attempts.enabled', false);
 

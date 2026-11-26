@@ -9,6 +9,7 @@ use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LockoutHistory;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
+use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 use SolutionForest\FilamentLoginGuard\Notifications\AccountLockedNotification;
 
 beforeEach(function () {
@@ -131,7 +132,12 @@ it('unlocks the email via the confirmation flow without touching other rows', fu
     expect(isLockedFor($attacker->ip, $attacker->email))->toBeTrue();
 
     // An append-only history row was recorded.
-    expect(LockoutHistory::query()->where('email', 'a@example.com')->count())->toBe(1);
+    expect(LockoutHistory::query()->where('email', 'a@example.com')->count())->toBe(1)
+        ->and(SecurityEvent::query()->where('type', SecurityEvent::TYPE_UNLOCKED)->sole()->metadata)->toBe([
+            'scope_type' => 'email',
+            'scope_key' => 'a@example.com',
+            'reason' => 'self_unlock',
+        ]);
 });
 
 it('releasing the email lock still leaves the ip lock active', function () {
@@ -197,7 +203,9 @@ it('rejects a tampered link', function () {
     expect(isLockedFor('1.2.3.4', 'a@example.com'))->toBeTrue();
 });
 
-it('rejects an expired link', function () {
+it('rejects an expired link while the email lock is still active', function () {
+    config()->set('filament-loginguard.lockout.initial_minutes', 120);
+    config()->set('filament-loginguard.lockout.notifications.self_unlock.link_ttl_minutes', 60);
     ($this->lock)();
 
     $url = app(LoginGuardService::class)->selfUnlockUrl('a@example.com');
@@ -207,9 +215,7 @@ it('rejects an expired link', function () {
     $this->get($url)->assertForbidden();
     $this->post($url)->assertForbidden();
 
-    // The lock also expired naturally; the point is that the link did not
-    // unlock anything — verified by the 403s above.
-    expect(true)->toBeTrue();
+    expect(isLockedFor('5.6.7.8', 'a@example.com'))->toBeTrue();
 });
 
 it('rejects a replayed link', function () {

@@ -64,14 +64,43 @@ class TestCase extends Orchestra
 
     public function getEnvironmentSetUp($app): void
     {
-        $app['config']->set('database.default', 'testing');
+        // The normal suite is in-memory SQLite. CI can run the same assertions
+        // against a real database, including strict lengths and SQL dialects.
+        $connection = env('LOGINGUARD_TEST_CONNECTION', 'testing');
+        if ($connection !== 'testing') {
+            if ($connection !== 'mysql') {
+                throw new \InvalidArgumentException('LOGINGUARD_TEST_CONNECTION must be testing or mysql.');
+            }
+
+            $database = env('LOGINGUARD_TEST_DATABASE', 'loginguard_test');
+            if (! is_string($database) || strlen($database) > 64 || ! preg_match('/\Aloginguard_test(?:_[a-z0-9_]+)?\z/', $database)) {
+                throw new \InvalidArgumentException('Use a disposable database named loginguard_test or loginguard_test_*.');
+            }
+
+            // Never inherit DB_URL or application credentials: migrate:fresh
+            // must only target the explicitly selected disposable test schema.
+            $connection = 'loginguard_mysql';
+            $app['config']->set('database.connections.' . $connection, [
+                'driver' => 'mysql',
+                'host' => env('LOGINGUARD_TEST_HOST', '127.0.0.1'),
+                'port' => env('LOGINGUARD_TEST_PORT', '3306'),
+                'database' => $database,
+                'username' => env('LOGINGUARD_TEST_USERNAME', 'root'),
+                'password' => env('LOGINGUARD_TEST_PASSWORD', ''),
+                'charset' => 'utf8mb4',
+                'collation' => 'utf8mb4_unicode_ci',
+                'strict' => true,
+            ]);
+        }
+
+        $app['config']->set('database.default', $connection);
         $app['config']->set('app.key', 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
 
         // Filament's export jobs use Bus::batch(), which stores batch records in
         // the connection from queue.batching.database — the sqlite connection by
         // default, which requires a physical database.sqlite file that does not
-        // exist in CI. Point it at the in-memory testing connection instead.
-        $app['config']->set('queue.batching.database', 'testing');
+        // exist in CI. Point it at the suite's selected connection instead.
+        $app['config']->set('queue.batching.database', $connection);
     }
 
     protected function defineDatabaseMigrations(): void

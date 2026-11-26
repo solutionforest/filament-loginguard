@@ -1,0 +1,125 @@
+name: extended-tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: PHP coverage and SQLite concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.4'
+          extensions: intl, mbstring, pdo_sqlite, pcntl, zip
+          coverage: pcov
+      - run: composer install --no-interaction --prefer-dist
+      - run: composer test:lint
+      - name: Execute tests with coverage
+        run: vendor/bin/pest --ci --coverage-clover build/coverage/clover.xml --coverage-html build/coverage/html --coverage-text=build/coverage/summary.txt
+      - name: Exercise concurrent production service calls
+        run: php tests/Concurrency/run.php
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: php-coverage
+          path: build/coverage
+          if-no-files-found: error
+          retention-days: 14
+
+  mysql:
+    name: MySQL 8.4 integration and concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: loginguard-ci-only
+          MYSQL_DATABASE: loginguard_test
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd="mysqladmin ping --silent --protocol=tcp --host=127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      LOGINGUARD_TEST_CONNECTION: mysql
+      LOGINGUARD_TEST_HOST: 127.0.0.1
+      LOGINGUARD_TEST_DATABASE: loginguard_test
+      LOGINGUARD_TEST_USERNAME: root
+      LOGINGUARD_TEST_PASSWORD: loginguard-ci-only
+      LOGINGUARD_CONCURRENCY_CONNECTION: mysql
+      LOGINGUARD_CONCURRENCY_HOST: 127.0.0.1
+      LOGINGUARD_CONCURRENCY_DATABASE: loginguard_concurrency_ci
+      LOGINGUARD_CONCURRENCY_USERNAME: root
+      LOGINGUARD_CONCURRENCY_PASSWORD: loginguard-ci-only
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.4'
+          extensions: intl, mbstring, pdo_mysql, pdo_sqlite, pcntl, zip
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist
+      - name: Create isolated concurrency database
+        env:
+          MYSQL_PWD: loginguard-ci-only
+          LOGINGUARD_TEST_PORT: ${{ job.services.mysql.ports[3306] }}
+        run: mysql --protocol=TCP --host=127.0.0.1 --port="$LOGINGUARD_TEST_PORT" --user=root --execute='CREATE DATABASE loginguard_concurrency_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+      - name: Execute the complete suite against MySQL
+        env:
+          LOGINGUARD_TEST_PORT: ${{ job.services.mysql.ports[3306] }}
+        run: vendor/bin/pest --ci
+      - name: Exercise concurrent production service calls
+        if: success() || failure()
+        env:
+          LOGINGUARD_CONCURRENCY_PORT: ${{ job.services.mysql.ports[3306] }}
+        run: php tests/Concurrency/run.php
+
+  browser:
+    name: Chromium browser flows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.4'
+          extensions: intl, mbstring, pdo_sqlite, zip
+          coverage: none
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: composer install --no-interaction --prefer-dist
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - name: Upload browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: browser-diagnostics
+          path: |
+            build/playwright
+          if-no-files-found: ignore
+          retention-days: 7

@@ -4,7 +4,6 @@ namespace SolutionForest\FilamentLoginGuard\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 
 /**
@@ -56,13 +55,12 @@ class Device extends Model
      */
     public function hasActiveSessions(): bool
     {
-        return $this->sessions()
-            ->whereIn('session_id', function (Builder $query): void {
-                $query->select('id')
-                    ->from(filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions'))
-                    ->whereRaw('last_activity >= ?', [now()->subMinutes(filament_loginguard_config_int('session.lifetime', 120))->getTimestamp()]);
-            })
-            ->exists();
+        $sessions = $this->sessions();
+        if (config('session.driver') === 'database') {
+            $sessions->whereIn('session_id', DeviceSession::liveSessionIds());
+        }
+
+        return $sessions->exists();
     }
 
     /**

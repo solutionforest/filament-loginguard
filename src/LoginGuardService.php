@@ -75,8 +75,9 @@ final class LoginGuardService
 
     /**
      * The furthest-out active lock applying to this (ip, email), or null.
+     * Pass null for the IP to check only the email scope.
      */
-    public function lockFor(string $ip, ?string $email): ?Carbon
+    public function lockFor(?string $ip, ?string $email): ?Carbon
     {
         /** @var string|null $lockedUntil */
         $lockedUntil = $this->activeLocksQuery($ip, $email)->max('locked_until');
@@ -107,7 +108,7 @@ final class LoginGuardService
      *
      * @return Builder<LoginGuardLock>
      */
-    private function activeLocksQuery(string $ip, ?string $email): Builder
+    private function activeLocksQuery(?string $ip, ?string $email): Builder
     {
         return LoginGuardLock::activeQuery()
             ->where(function (Builder $query) use ($ip, $email): void {
@@ -122,10 +123,12 @@ final class LoginGuardService
                             ->where('scope_key', $email);
                     });
 
-                    $query->orWhere(function (Builder $q) use ($ip, $email): void {
-                        $q->where('scope_type', LoginGuardLock::SCOPE_PAIR)
-                            ->where('scope_key', $ip . '|' . $email);
-                    });
+                    if ($ip !== null) {
+                        $query->orWhere(function (Builder $q) use ($ip, $email): void {
+                            $q->where('scope_type', LoginGuardLock::SCOPE_PAIR)
+                                ->where('scope_key', $ip . '|' . $email);
+                        });
+                    }
                 }
             });
     }
@@ -151,14 +154,28 @@ final class LoginGuardService
      */
     public function recordFailure(string $ip, string $email, ?string $userAgent = null): LockoutResult
     {
+        if ($userAgent !== null && Str::length($userAgent) > 255) {
+            $userAgent = Str::substr($userAgent, 0, 252) . '...';
+        }
+
         /** @var LockoutResult $result */
         $result = DB::transaction(function () use ($ip, $email, $userAgent): LockoutResult {
             $now = Carbon::now();
             $maxAttempts = filament_loginguard_config_int('filament-loginguard.lockout.max_attempts', 10);
             $windowMinutes = filament_loginguard_config_int('filament-loginguard.lockout.attempts_window_minutes', 30);
-            $windowSeconds = max(1, $windowMinutes) * 60;
+            $cutoff = $now->copy()->subMinutes(max(1, $windowMinutes));
             $trackIp = (bool) config('filament-loginguard.lockout.tracking.per_ip', true);
             $trackEmail = (bool) config('filament-loginguard.lockout.tracking.per_email', true);
+
+            if (DB::connection()->getDriverName() === 'sqlite') {
+                // SQLite cannot always promote a read transaction to a writer.
+                // Start with a conditional rollover so writers wait before taking a snapshot.
+                LoginAttempt::query()
+                    ->where('ip', $ip)
+                    ->where('email', $email)
+                    ->where('window_started_at', '<=', $cutoff)
+                    ->update(['attempts' => 0, 'window_started_at' => $now]);
+            }
 
             /** @var LoginAttempt $row */
             $row = LoginAttempt::query()->firstOrCreate(['ip' => $ip, 'email' => $email]);
@@ -181,7 +198,7 @@ final class LoginGuardService
             // Fixed window: if the current window expired, restart it from zero. The
             // atomic UPDATE below then bumps the (possibly reset) counter by one.
             $windowExpired = $row->window_started_at === null
-                || $row->window_started_at->lt($now->copy()->subSeconds($windowSeconds));
+                || $row->window_started_at->lte($cutoff);
 
             if ($windowExpired) {
                 LoginAttempt::query()
@@ -194,13 +211,11 @@ final class LoginGuardService
                 ->update([
                     'attempts' => DB::raw('attempts + 1'),
                     'last_attempt_at' => $now,
-                    'user_agent' => $userAgent === null ? null : Str::limit($userAgent, 255),
+                    'user_agent' => $userAgent,
                 ]);
 
             $row = LoginAttempt::query()->findOrFail($key);
             $attempts = $updatedRows > 0 ? (int) $row->attempts : 1;
-
-            $cutoff = $now->copy()->subSeconds($windowSeconds);
 
             // Aggregate sums count attempts of all rows of the same IP (or same email)
             // whose window is still active. A threshold breach locks the *scope*
@@ -210,7 +225,7 @@ final class LoginGuardService
             if ($trackIp) {
                 $ipAttempts = filament_loginguard_intval(LoginAttempt::query()
                     ->where('ip', $ip)
-                    ->where('window_started_at', '>=', $cutoff)
+                    ->where('window_started_at', '>', $cutoff)
                     ->sum('attempts'));
 
                 if ($ipAttempts >= $maxAttempts) {
@@ -221,7 +236,7 @@ final class LoginGuardService
             if ($trackEmail) {
                 $emailAttempts = filament_loginguard_intval(LoginAttempt::query()
                     ->where('email', $email)
-                    ->where('window_started_at', '>=', $cutoff)
+                    ->where('window_started_at', '>', $cutoff)
                     ->sum('attempts'));
 
                 if ($emailAttempts >= $maxAttempts) {
@@ -405,6 +420,7 @@ final class LoginGuardService
             'attempts' => 0,
             'lockout_count' => 0,
             'last_attempt_at' => null,
+            'window_started_at' => null,
         ]);
 
         if (filled($email)) {
@@ -429,6 +445,7 @@ final class LoginGuardService
             'attempts' => 0,
             'lockout_count' => 0,
             'last_attempt_at' => null,
+            'window_started_at' => null,
             'success_count' => (int) $row->success_count + 1,
             'last_success_at' => Carbon::now(),
         ])->save();

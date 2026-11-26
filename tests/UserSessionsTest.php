@@ -116,27 +116,31 @@ it('parses a user agent without a browser name', function () {
     expect($session->device_name)->toBe('macOS');
 });
 
-it('revokes multiple sessions at once', function () {
-    UserSession::query()->create([
+it('revokes selected sessions while preserving the current session', function () {
+    $current = UserSession::query()->create([
+        'id' => session()->getId(),
+        'user_id' => 1,
+        'payload' => 'test',
+        'last_activity' => now()->timestamp,
+    ]);
+    $first = UserSession::query()->create([
         'id' => 'session-bulk-a',
         'user_id' => 42,
         'payload' => 'test',
         'last_activity' => now()->timestamp,
     ]);
-
-    UserSession::query()->create([
+    $second = UserSession::query()->create([
         'id' => 'session-bulk-b',
         'user_id' => 43,
         'payload' => 'test',
         'last_activity' => now()->timestamp,
     ]);
 
-    $records = UserSession::query()->whereIn('id', ['session-bulk-a', 'session-bulk-b'])->get();
-
     Livewire::test(UserSessions::class)
-        ->callTableBulkAction('revokeMany', $records);
+        ->assertTableActionHidden('revoke', $current)
+        ->callTableBulkAction('revokeMany', [$current, $first, $second]);
 
-    expect(UserSession::query()->count())->toBe(0);
+    expect(UserSession::query()->sole()->id)->toBe($current->id);
 });
 
 it('denies access and hides navigation when disabled', function () {
@@ -156,6 +160,73 @@ it('gates the page behind an ability when configured', function () {
     Gate::define('view-user-sessions', fn (): bool => true);
 
     expect(UserSessions::canAccess())->toBeTrue();
+});
+
+it('uses the view-specific ability ahead of the legacy sessions ability', function () {
+    config()->set('filament-loginguard.pages.sessions.authorize', 'manage-sessions');
+    config()->set('filament-loginguard.pages.sessions.authorize_view', 'view-sessions');
+    config()->set('filament-loginguard.pages.sessions.authorize_revoke', 'revoke-sessions');
+    Gate::define('manage-sessions', fn (): bool => true);
+    Gate::define('revoke-sessions', fn (): bool => true);
+
+    Livewire::test(UserSessions::class)->assertStatus(403);
+
+    Gate::define('view-sessions', fn (): bool => true);
+
+    Livewire::test(UserSessions::class)->assertSuccessful();
+});
+
+it('enforces the separate revoke ability for individual and bulk actions', function (bool $defineDeniedAbility) {
+    config()->set('filament-loginguard.pages.sessions.authorize', 'manage-sessions');
+    config()->set('filament-loginguard.pages.sessions.authorize_view', 'view-sessions');
+    config()->set('filament-loginguard.pages.sessions.authorize_revoke', 'revoke-sessions');
+    Gate::define('manage-sessions', fn (): bool => true);
+    Gate::define('view-sessions', fn (): bool => true);
+
+    if ($defineDeniedAbility) {
+        Gate::define('revoke-sessions', fn (): bool => false);
+    }
+
+    $first = UserSession::query()->create(['id' => 'session-a', 'user_id' => 42, 'payload' => 'test', 'last_activity' => now()->timestamp]);
+    $second = UserSession::query()->create(['id' => 'session-b', 'user_id' => 43, 'payload' => 'test', 'last_activity' => now()->timestamp]);
+
+    Livewire::test(UserSessions::class)
+        ->assertCanSeeTableRecords([$first, $second])
+        ->assertTableActionHidden('revoke', $first)
+        ->assertTableBulkActionHidden('revokeMany')
+        ->mountTableAction('revoke', $first)
+        ->assertActionNotMounted('revoke')
+        ->mountTableBulkAction('revokeMany', [$first, $second])
+        ->assertActionNotMounted('revokeMany');
+
+    expect($first->fresh())->not->toBeNull()
+        ->and($second->fresh())->not->toBeNull();
+
+    Gate::define('revoke-sessions', fn (): bool => true);
+
+    Livewire::test(UserSessions::class)
+        ->assertTableActionVisible('revoke', $first)
+        ->assertTableBulkActionVisible('revokeMany')
+        ->callTableAction('revoke', $first)
+        ->callTableBulkAction('revokeMany', [$second]);
+
+    expect($first->fresh())->toBeNull()
+        ->and($second->fresh())->toBeNull();
+})->with([
+    'denied gate' => [true],
+    'undefined gate' => [false],
+]);
+
+it('orders authenticated sessions by activity and searches by IP address', function () {
+    $oldest = UserSession::query()->create(['id' => 'session-a', 'user_id' => 42, 'ip_address' => '1.2.3.4', 'payload' => 'test', 'last_activity' => now()->subMinutes(5)->timestamp]);
+    $newest = UserSession::query()->create(['id' => 'session-b', 'user_id' => 43, 'ip_address' => '5.6.7.8', 'payload' => 'test', 'last_activity' => now()->timestamp]);
+    $middle = UserSession::query()->create(['id' => 'session-c', 'user_id' => 44, 'ip_address' => '9.9.9.9', 'payload' => 'test', 'last_activity' => now()->subMinute()->timestamp]);
+
+    Livewire::test(UserSessions::class)
+        ->assertCanSeeTableRecords([$newest, $middle, $oldest], inOrder: true)
+        ->searchTable('9.9.9.9')
+        ->assertCanSeeTableRecords([$middle])
+        ->assertCanNotSeeTableRecords([$newest, $oldest]);
 });
 
 it('uses the configured slug', function () {

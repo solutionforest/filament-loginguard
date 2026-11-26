@@ -23,13 +23,17 @@ final class IpAddress
             return '';
         }
 
-        if (str_starts_with($ip, '::ffff:') && filter_var(substr($ip, 7), FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            $ip = substr($ip, 7);
-        }
-
         $binary = @inet_pton($ip);
 
-        return $binary === false ? $ip : (string) inet_ntop($binary);
+        if ($binary === false) {
+            return $ip;
+        }
+
+        if (str_starts_with($binary, str_repeat("\0", 10) . "\xff\xff")) {
+            $binary = substr($binary, 12);
+        }
+
+        return (string) inet_ntop($binary);
     }
 
     /**

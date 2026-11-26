@@ -57,6 +57,10 @@ Every panel user gets a **My Devices** page in their user menu — no admin perm
 
 Device identities are opaque cookie tokens: the browser holds a random token, the database stores only its SHA-256 hash, scoped per `guard + user model + user identifier`.
 
+**Revocation and “remember me”:** “This isn't me” also rotates Laravel's shared account remember token. Previously issued remember cookies for that account stop working on every device. Other devices' already authenticated sessions remain signed in. Ordinary **Sign out** retains the existing recognition and remember-token behaviour.
+
+The device cap removes the oldest inactive identities. Active devices and the identity being registered are preserved, so the account can temporarily exceed the configured cap while all its devices are active.
+
 ### IP intelligence (GeoIP enrichment)
 
 A foundation layer that resolves the login IP to country / city / ASN / coordinates (MaxMind GeoLite2) and flags "new country / new ASN" per account. It **only produces signals** — it never blocks. Off by default; see [IP intelligence](#ip-intelligence).
@@ -325,7 +329,7 @@ return [
         ],
 
         'retention_days' => 90,            // drop devices with no sessions after this many days (0 = keep)
-        'max_devices_per_user' => 20,      // hard cap of device identities per account (0 = unlimited)
+        'max_devices_per_user' => 20,      // prune oldest inactive identities above this count (0 = unlimited)
 
         'notifications' => [
             'new_device' => false,         // email the account owner on a new device sign-in
@@ -456,11 +460,15 @@ Alternatively, set `maintenance.cleanup_attempts.enabled` / `maintenance.cleanup
 
 ## Quality
 
-Every push runs [`tests.yml`](.github/workflows/tests.yml):
+Every push runs the [compatibility suite](.github/workflows/tests.yml), [extended tests](.github/workflows/extended-tests.yml) and [static analysis](.github/workflows/phpstan.yml):
 
 | Check | What it covers |
 | --- | --- |
-| Pest | 200+ tests on PHP 8.3 and 8.4 × Laravel 12 and 13 with Filament 5, and on the oldest supported Filament, 5.8.3 |
+| Pest | 250+ tests on PHP 8.3 and 8.4 × Laravel 12 and 13, Ubuntu and Windows, plus the oldest supported Filament, 5.8.3 |
+| Database integration | The complete Pest suite on strict MySQL 8.4, in addition to the SQLite compatibility matrix |
+| Concurrency | Eight independent PHP processes call the production login service together; checks exact counters, fixed-window rollover and IP/email aggregate lockouts on SQLite and MySQL |
+| Browser | Chromium exercises login protection and the My Devices revocation flow against the Workbench application |
+| Coverage | PCOV line coverage with downloadable HTML, Clover and text reports; this measures executed code, not proof that every possible behaviour is tested |
 | PHPStan | Level 10, on `src`, `config` and `database` |
 | Pint | Laravel's code style |
 
@@ -470,7 +478,44 @@ To run them yourself:
 composer test        # Pest
 composer analyse     # PHPStan
 composer test:lint   # Pint
+php tests/Concurrency/run.php  # isolated temporary SQLite database
 ```
+
+For the browser suite (Node.js 20 or later), run:
+
+```bash
+npm ci
+npx playwright install --with-deps chromium
+npm run test:browser
+```
+
+The browser harness creates its own temporary Workbench database and starts a loopback server. It does not use the application's database.
+
+To run Pest against MySQL, create a disposable `loginguard_test` database and supply the test-specific connection settings:
+
+```bash
+LOGINGUARD_TEST_CONNECTION=mysql \
+LOGINGUARD_TEST_DATABASE=loginguard_test \
+LOGINGUARD_TEST_HOST=127.0.0.1 \
+LOGINGUARD_TEST_PORT=3306 \
+LOGINGUARD_TEST_USERNAME=root \
+LOGINGUARD_TEST_PASSWORD=local-test-password \
+composer test
+```
+
+This suite runs `migrate:fresh`; only names matching `loginguard_test` or `loginguard_test_*` are accepted. Standard application `DB_*` variables and `DB_URL` are not used. The concurrency harness needs a separate **empty** database named `loginguard_concurrency_*`:
+
+```bash
+LOGINGUARD_CONCURRENCY_CONNECTION=mysql \
+LOGINGUARD_CONCURRENCY_DATABASE=loginguard_concurrency_local \
+LOGINGUARD_CONCURRENCY_HOST=127.0.0.1 \
+LOGINGUARD_CONCURRENCY_PORT=3306 \
+LOGINGUARD_CONCURRENCY_USERNAME=root \
+LOGINGUARD_CONCURRENCY_PASSWORD=local-test-password \
+php tests/Concurrency/run.php
+```
+
+CI currently exercises SQLite, MySQL and Chromium. PostgreSQL, SQL Server, MariaDB, Firefox and WebKit do not yet have dedicated jobs.
 
 ## Limits
 

@@ -53,7 +53,7 @@ final class DeviceCookie
 
     public static function forget(): void
     {
-        Cookie::queue(Cookie::forget(self::name()));
+        Cookie::queue(Cookie::forget(self::name(), '/'));
     }
 
     /**

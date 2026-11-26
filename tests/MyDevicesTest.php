@@ -17,6 +17,7 @@ use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 use SolutionForest\FilamentLoginGuard\Pages\MyDevices;
 use SolutionForest\FilamentLoginGuard\Services\DeviceManager;
 use SolutionForest\FilamentLoginGuard\Support\DeviceCookie;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Workbench\App\Models\User;
 use Workbench\Database\Factories\UserFactory;
 
@@ -134,10 +135,12 @@ it('separates device identities per account on the same browser', function () {
 
     [$kenDevice] = $manager->resolveOrCreate($ken, 'web', 'Chrome UA', '1.2.3.4');
 
-    // Same cookie (the browser is shared), different account.
+    // The shared browser sends the same cookie for the second account.
+    request()->cookies->set(DeviceCookie::name(), Cookie::queued(DeviceCookie::name())->getValue());
     [$aliceDevice, $aliceIsNew] = $manager->resolveOrCreate($alice, 'web', 'Chrome UA', '1.2.3.4');
 
     expect($aliceDevice->is($kenDevice))->toBeFalse()
+        ->and($aliceDevice->token_hash)->toBe($kenDevice->token_hash)
         ->and($aliceIsNew)->toBeTrue()
         ->and($aliceDevice->user_identifier)->toBe((string) $alice->getAuthIdentifier());
 });
@@ -148,9 +151,11 @@ it('keeps multi-guard accounts separate', function () {
     request()->server->set('REMOTE_ADDR', '1.2.3.4');
 
     [$webDevice] = $manager->resolveOrCreate($user, 'web', 'UA', '1.2.3.4');
+    request()->cookies->set(DeviceCookie::name(), Cookie::queued(DeviceCookie::name())->getValue());
     [$adminDevice] = $manager->resolveOrCreate($user, 'admin', 'UA', '1.2.3.4');
 
-    expect($webDevice->is($adminDevice))->toBeFalse();
+    expect($webDevice->is($adminDevice))->toBeFalse()
+        ->and($webDevice->token_hash)->toBe($adminDevice->token_hash);
 });
 
 it('supports uuid-style user identifiers', function () {
@@ -207,6 +212,7 @@ it('revokes the device on this-isnt-me and the token never revives', function ()
         ->and(SecurityEvent::query()->where('type', SecurityEvent::TYPE_DEVICE_REVOKED)->count())->toBe(1);
 
     // The same cookie coming back must NOT be treated as recognized.
+    request()->cookies->set(DeviceCookie::name(), $token);
     [$resolved, $isNew] = app(DeviceManager::class)->resolveOrCreate($user, 'web', 'Chrome UA', '1.2.3.4');
 
     expect($resolved->is($device))->toBeFalse()
@@ -223,6 +229,7 @@ it('forgets a device so its next sign-in is a new device', function () {
     expect(Device::query()->whereKey($device->id)->exists())->toBeFalse()
         ->and(SecurityEvent::query()->where('type', SecurityEvent::TYPE_DEVICE_FORGOTTEN)->count())->toBe(1);
 
+    request()->cookies->set(DeviceCookie::name(), $token);
     [$fresh, $isNew] = app(DeviceManager::class)->resolveOrCreate($user, 'web', 'Chrome UA', '1.2.3.4');
 
     expect($isNew)->toBeTrue()
@@ -308,7 +315,7 @@ it('cleans up dead session mappings and old devices', function () {
         'last_seen_at' => now()->subDays(200),
     ]);
 
-    app(DeviceManager::class)->cleanup();
+    $this->artisan('filament-loginguard:cleanup-devices')->assertSuccessful();
 
     expect($device->sessions()->count())->toBe(0)
         ->and(Device::query()->whereKey($old->id)->exists())->toBeFalse()
@@ -354,4 +361,82 @@ it('still runs the legacy fingerprint logic alongside device identity', function
         // ...and the new device identity layer got its row too.
         ->and(Device::query()->count())->toBe(1)
         ->and(DeviceSession::query()->count())->toBe(1);
+});
+
+it('keeps live and just-resolved devices when enforcing the cap', function () {
+    config()->set('filament-loginguard.devices.max_devices_per_user', 1);
+    $user = UserFactory::new()->create();
+    $manager = app(DeviceManager::class);
+    [$live] = seedDevice('web', $user::class, (string) $user->getKey(), ['last_seen_at' => now()->subDays(3)]);
+    [$inactive] = seedDevice('web', $user::class, (string) $user->getKey());
+    startSession('live');
+    $manager->associateSession($live, 'web', 'live');
+    $manager->associateSession($inactive, 'web', 'expired-mapping');
+
+    [$current] = $manager->resolveOrCreate($user, 'web', 'Chrome UA', '192.0.2.6');
+
+    expect(Device::query()->orderBy('id')->pluck('id')->all())->toBe([$live->id, $current->id])
+        ->and($live->sessions()->count())->toBe(1);
+});
+
+it('applies the configured device cookie attributes and expiration', function () {
+    config()->set('filament-loginguard.devices.cookie', [
+        'name' => 'company_device',
+        'lifetime_days' => 14,
+        'same_site' => 'strict',
+    ]);
+    config()->set('session.secure', true);
+    config()->set('session.path', '/admin');
+    app()->forgetInstance('cookie');
+    Cookie::clearResolvedInstance('cookie');
+
+    DeviceCookie::queue('opaque-identity');
+    $cookie = Cookie::queued('company_device');
+
+    expect($cookie->getValue())->toBe('opaque-identity')
+        ->and($cookie->getPath())->toBe('/')
+        ->and($cookie->isHttpOnly())->toBeTrue()
+        ->and($cookie->isSecure())->toBeTrue()
+        ->and($cookie->getSameSite())->toBe('strict')
+        ->and($cookie->getExpiresTime())->toBe(now()->addDays(14)->timestamp);
+
+    DeviceCookie::forget();
+    $expired = Cookie::queued('company_device', path: '/');
+    expect($expired->getExpiresTime())->toBeLessThan(now()->timestamp);
+});
+
+it('preserves live and recent devices during retention cleanup', function () {
+    config()->set('filament-loginguard.devices.retention_days', 30);
+    $owner = UserFactory::new()->create();
+    $manager = app(DeviceManager::class);
+    $old = ['last_seen_at' => now()->subDays(31)];
+    [$live] = seedDevice('web', $owner::class, (string) $owner->getKey(), $old);
+    [$expired] = seedDevice('web', $owner::class, (string) $owner->getKey(), $old);
+    [$recent] = seedDevice('web', $owner::class, (string) $owner->getKey());
+
+    startSession('live-session');
+    startSession('expired-session');
+    DB::table('sessions')->where('id', 'expired-session')->update(['last_activity' => now()->subDay()->timestamp]);
+    $manager->associateSession($live, 'web', 'live-session');
+    $manager->associateSession($expired, 'web', 'expired-session');
+    $manager->associateSession($recent, 'web', 'missing-session');
+
+    $this->artisan('filament-loginguard:cleanup-devices')->assertSuccessful();
+
+    expect(Device::query()->orderBy('id')->pluck('id')->all())->toBe([$live->id, $recent->id])
+        ->and(DeviceSession::query()->pluck('session_id')->all())->toBe(['live-session']);
+});
+
+it('retains a device that gained a live session before forget was confirmed', function () {
+    $owner = UserFactory::new()->create();
+    [$device] = seedDevice('web', $owner::class, (string) $owner->getKey());
+    startSession('resumed-session');
+    app(DeviceManager::class)->associateSession($device, 'web', 'resumed-session');
+
+    expect(fn () => app(DeviceManager::class)->forget($device))
+        ->toThrow(fn (HttpException $exception) => expect($exception->getStatusCode())->toBe(409));
+
+    expect($device->fresh())->not->toBeNull()
+        ->and($device->sessions()->count())->toBe(1)
+        ->and(SecurityEvent::query()->where('type', SecurityEvent::TYPE_DEVICE_FORGOTTEN)->count())->toBe(0);
 });

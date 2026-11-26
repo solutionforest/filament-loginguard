@@ -41,10 +41,10 @@ it('records a failed attempt through the native Filament login page', function (
     expect($row->attempts)->toBe(1);
 });
 
-it('locks out through the native Filament login page', function () {
+it('rejects the correct password until the native Filament login lock expires', function () {
     config()->set('filament-loginguard.lockout.max_attempts', 2);
 
-    UserFactory::new()->create([
+    $user = UserFactory::new()->create([
         'email' => 'admin@example.com',
         'password' => Hash::make('secret'),
     ]);
@@ -59,12 +59,31 @@ it('locks out through the native Filament login page', function () {
 
     $row = LoginAttempt::query()->where('email', 'admin@example.com')->sole();
 
-    expect(app(LoginGuardService::class)->isLocked($row->ip, $row->email))->toBeTrue();
+    $service = app(LoginGuardService::class);
+    $lockedUntil = $service->lockFor($row->ip, $row->email);
 
-    // A further attempt is rejected by the lockout before any credential work.
+    expect($lockedUntil)->not->toBeNull();
+
     Livewire::test(Login::class)
         ->set('data.email', 'admin@example.com')
-        ->set('data.password', 'wrong-password')
+        ->set('data.password', 'secret')
         ->call('authenticate')
         ->assertHasErrors(['data.email']);
+
+    $this->assertGuest();
+    expect($row->refresh()->attempts)->toBe(2)
+        ->and($row->success_count)->toBe(0)
+        ->and($service->lockFor($row->ip, $row->email)?->equalTo($lockedUntil))->toBeTrue();
+
+    $this->travelTo($lockedUntil, function () use ($user, $row): void {
+        Livewire::test(Login::class)
+            ->set('data.email', 'admin@example.com')
+            ->set('data.password', 'secret')
+            ->call('authenticate')
+            ->assertHasNoErrors();
+
+        $this->assertAuthenticatedAs($user);
+        expect($row->refresh()->attempts)->toBe(0)
+            ->and($row->success_count)->toBe(1);
+    });
 });

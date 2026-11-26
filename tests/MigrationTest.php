@@ -57,3 +57,12 @@ it('creates the location history table with the expected columns', function () {
             'updated_at',
         ]))->toBeTrue();
 });
+
+it('uses a portable identifier for the unique device identity index', function () {
+    $identity = collect(Schema::getIndexes('filament_loginguard_devices'))
+        ->sole(fn (array $index): bool => $index['unique']
+            && $index['columns'] === ['guard', 'user_type', 'user_identifier', 'token_hash']);
+
+    // MySQL limits index names to 64 characters, even if SQLite accepts longer ones.
+    expect(strlen($identity['name']))->toBeLessThanOrEqual(64);
+});

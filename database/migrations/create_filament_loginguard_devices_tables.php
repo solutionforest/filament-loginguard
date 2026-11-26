@@ -32,7 +32,7 @@ return new class extends Migration
 
             $table->timestamps();
 
-            $table->unique(['guard', 'user_type', 'user_identifier', 'token_hash']);
+            $table->unique(['guard', 'user_type', 'user_identifier', 'token_hash'], 'filament_loginguard_devices_identity_unique');
             $table->index(['user_identifier', 'guard']);
             $table->index('revoked_at');
         });

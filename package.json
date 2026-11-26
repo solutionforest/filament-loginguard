@@ -5,9 +5,11 @@
         "dev": "node bin/build.js --dev && npm run build:css",
         "build": "node bin/build.js && npm run build:css",
         "build:css": "tailwindcss --input ./resources/css/my-devices.css --output ./resources/dist/filament-loginguard/my-devices.css --minify",
-        "build:workbench": "tailwindcss --input ./workbench/resources/css/app.css --output ./vendor/orchestra/testbench-core/laravel/public/css/app.css --minify && esbuild ./workbench/resources/js/app.js --bundle --outfile=./vendor/orchestra/testbench-core/laravel/public/js/app.js --minify"
+        "build:workbench": "tailwindcss --input ./workbench/resources/css/app.css --output ./vendor/orchestra/testbench-core/laravel/public/css/app.css --minify && esbuild ./workbench/resources/js/app.js --bundle --outfile=./vendor/orchestra/testbench-core/laravel/public/js/app.js --minify",
+        "test:browser": "npm run build:workbench && php vendor/bin/testbench filament:assets && playwright test"
     },
     "devDependencies": {
+        "@playwright/test": "^1.65.1",
         "@tailwindcss/cli": "^4.3.3",
         "alpinejs": "^3.16.2",
         "esbuild": "^0.28.0",
