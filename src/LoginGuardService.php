@@ -493,14 +493,31 @@ final class LoginGuardService
             return;
         }
 
-        DB::transaction(function () use ($ip, $email): void {
+        $identity = ['ip' => IpAddress::storedKeys($ip)[0], 'email' => $email];
+        $usesMysql = in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
+
+        DB::transaction(function () use ($ip, $email, $identity, $usesMysql): void {
+            $attempts = LoginAttempt::query();
+
+            if ($usesMysql) {
+                // Create an absent pair before the reset can take a gap lock
+                // on its location. Keep duplicate-key recovery on a current read.
+                $exists = (clone $attempts)->where($identity)->exists();
+                $attempts->lockForUpdate();
+
+                if (! $exists) {
+                    $attempts->createOrFirst($identity);
+                }
+            }
+
             $this->resetForSuccess($ip, $email);
-            $row = LoginAttempt::query()->firstOrCreate(['ip' => IpAddress::storedKeys($ip)[0], 'email' => $email]);
+
+            $row = $attempts->firstOrCreate($identity);
             $row->forceFill([
                 'success_count' => (int) $row->success_count + 1,
                 'last_success_at' => Carbon::now(),
             ])->save();
-        });
+        }, attempts: $usesMysql ? 8 : 1);
     }
 
     /**

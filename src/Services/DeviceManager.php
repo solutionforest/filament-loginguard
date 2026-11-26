@@ -48,14 +48,21 @@ class DeviceManager
 
         $rawToken = DeviceCookie::get();
         $knownDevice = $rawToken !== null
-            ? $this->findByToken($guard, $userType, $identifier, $rawToken)
+            ? $this->findByHash($guard, $userType, $identifier, DeviceCookie::hash($rawToken))
             : null;
 
         // A revoked token must never silently become recognized again; the
         // browser gets a fresh identity on the next login.
         if ($knownDevice !== null && $knownDevice->isRevoked()) {
+            $rawToken = DeviceCookie::replaceRevokedToken($knownDevice->token_hash);
             $knownDevice = null;
-            $rawToken = null;
+        } elseif ($knownDevice === null && request()->hasSession() && ($rotation = DeviceCookie::rotation()) !== null) {
+            // A sibling may have just rotated the shared cookie. Preserve this
+            // guard's existing live identity; finalization rekeys it under lock.
+            $prior = $this->findByHash($guard, $userType, $identifier, $rotation['from']);
+            if ($prior !== null && ! $prior->isRevoked()) {
+                $knownDevice = $prior;
+            }
         }
 
         if ($knownDevice === null) {
@@ -120,30 +127,52 @@ class DeviceManager
      * Associate every guard authenticated in a persisted session together.
      * If an identity was removed or revoked during login, reject the session.
      *
-     * @param  list<Device>  $devices
+     * @param  list<Device|array{id: int, guard: string, user_type: string, user_identifier: string}>  $devices
      */
-    public function associatePersistedSession(array $devices, string $sessionId): bool
+    public function associatePersistedSession(array $devices, string $sessionId, ?string $previousSessionId = null): bool
     {
-        return DB::connection()->transaction(function () use ($devices, $sessionId): bool {
-            $ids = array_map(fn (Device $device): int => $device->id, $devices);
-            $lockedDevices = $this->lockDevices(Device::query()->whereKey($ids))->keyBy('id');
+        return DB::connection()->transaction(function () use ($devices, $sessionId, $previousSessionId): bool {
+            $bindings = array_map(fn (Device | array $device): array => $device instanceof Device
+                ? $this->sessionBinding($device)
+                : $device, $devices);
+            $lockedDevices = $this->lockDevices(Device::query()->whereKey(array_column($bindings, 'id')))->keyBy('id');
 
-            foreach ($devices as $device) {
-                $current = $lockedDevices->get($device->id);
-                if ($current === null || $current->isRevoked()
-                    || $current->guard !== $device->guard
-                    || $current->user_type !== $device->user_type
-                    || $current->user_identifier !== $device->user_identifier) {
+            foreach ($bindings as $binding) {
+                $current = $lockedDevices->get($binding['id']);
+                if ($current === null || $current->isRevoked() || $current->guard !== $binding['guard']
+                    || $current->user_type !== $binding['user_type'] || $current->user_identifier !== $binding['user_identifier']) {
                     return false;
                 }
             }
 
+            if ($previousSessionId !== null && $previousSessionId !== $sessionId && config('session.driver') === 'database') {
+                $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
+                DeviceSession::query()->where('session_id', $previousSessionId)
+                    ->whereNotIn('session_id', DB::table($sessionsTable)->select('id'))
+                    ->delete();
+            }
+
+            $rotation = DeviceCookie::rotation();
             foreach ($lockedDevices as $device) {
+                if ($rotation !== null && $device->token_hash === $rotation['from']) {
+                    $device->forceFill(['token_hash' => $rotation['to']])->save();
+                }
                 $this->associateSession($device, $device->guard, $sessionId);
             }
 
             return true;
         });
+    }
+
+    /** @return array{id: int, guard: string, user_type: string, user_identifier: string} */
+    public function sessionBinding(Device $device): array
+    {
+        return [
+            'id' => $device->id,
+            'guard' => $device->guard,
+            'user_type' => $device->user_type,
+            'user_identifier' => $device->user_identifier,
+        ];
     }
 
     /**
@@ -426,10 +455,10 @@ class DeviceManager
         return $devices->get();
     }
 
-    private function findByToken(string $guard, string $userType, string $identifier, string $rawToken): ?Device
+    private function findByHash(string $guard, string $userType, string $identifier, string $hash): ?Device
     {
         return $this->devicesFor($guard, $userType, $identifier)
-            ->where('token_hash', DeviceCookie::hash($rawToken))
+            ->where('token_hash', $hash)
             ->first();
     }
 

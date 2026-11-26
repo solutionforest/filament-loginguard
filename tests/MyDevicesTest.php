@@ -120,6 +120,7 @@ it('treats two identical browser+os setups as two devices', function () {
 
     // Desktop and laptop both report "Chrome on Windows" but carry different cookies.
     [$desktop] = $manager->resolveOrCreate($user, 'web', 'Chrome UA', '1.2.3.4');
+    request()->cookies->remove(DeviceCookie::name());
     [$laptop] = $manager->resolveOrCreate($user, 'web', 'Chrome UA', '1.2.3.4');
 
     expect($desktop->is($laptop))->toBeFalse()
@@ -290,12 +291,12 @@ it('respects the max devices per user cap', function () {
     $manager = app(DeviceManager::class);
     request()->server->set('REMOTE_ADDR', '1.2.3.4');
 
-    $manager->resolveOrCreate($user, 'web', 'UA', '1.2.3.4');
-    $manager->resolveOrCreate($user, 'web', 'UA', '1.2.3.4');
-    $manager->resolveOrCreate($user, 'web', 'UA', '1.2.3.4');
-    $manager->resolveOrCreate($user, 'web', 'UA', '1.2.3.4');
+    for ($browser = 0; $browser < 4; $browser++) {
+        request()->cookies->remove(DeviceCookie::name());
+        $manager->resolveOrCreate($user, 'web', 'UA', '1.2.3.4');
+    }
 
-    expect(Device::query()->count())->toBeLessThanOrEqual(2);
+    expect(Device::query()->count())->toBe(2);
 });
 
 it('cleans up dead session mappings and old devices', function () {

@@ -6,6 +6,8 @@ use Illuminate\Auth\Events\Attempting;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\SessionGuard;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -23,7 +25,11 @@ use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class AuthenticationListener
 {
-    private const PENDING_DEVICES = 'filament-loginguard.login-devices';
+    private const LOGIN_REQUEST = 'filament-loginguard.login-request';
+
+    private const SESSION_BINDINGS = 'filament-loginguard.device-bindings';
+
+    private const PREVIOUS_SESSION = 'filament-loginguard.previous-session';
 
     public function __construct(
         protected LoginGuardService $service,
@@ -192,9 +198,7 @@ class AuthenticationListener
             // StartSession persists the final ID after Fortify or Filament
             // finishes regenerating the session during the login request.
             if (request()->hasSession()) {
-                $pending = request()->attributes->all(self::PENDING_DEVICES);
-                $pending[$event->guard] = $device;
-                request()->attributes->set(self::PENDING_DEVICES, $pending);
+                $this->bindSessionDevice($device);
             } else {
                 $sessionId = filament_loginguard_session_id();
 
@@ -213,41 +217,93 @@ class AuthenticationListener
         }
     }
 
+    private function bindSessionDevice(Device $device): void
+    {
+        $request = request();
+        $session = $request->session();
+        $stored = $session->get(self::SESSION_BINDINGS);
+        $bindings = is_array($stored) ? $stored : [];
+
+        if (! $request->attributes->has(self::LOGIN_REQUEST)) {
+            $previousId = $request->cookie($session->getName());
+            if (is_string($previousId) && $previousId !== '') {
+                $request->attributes->set(self::PREVIOUS_SESSION, $previousId);
+                // Upgrade existing sessions from their persisted mappings once.
+                if (! is_array($stored)) {
+                    $prior = Device::query()->whereHas('sessions', fn (Builder $query) => $query
+                        ->where('session_id', $previousId)
+                        ->whereColumn('filament_loginguard_device_sessions.guard', 'filament_loginguard_devices.guard'))->get();
+                    foreach ($prior as $sibling) {
+                        $bindings[$sibling->guard] = $this->deviceManager->sessionBinding($sibling);
+                    }
+                }
+            }
+            $request->attributes->set(self::LOGIN_REQUEST, true);
+        }
+
+        // This snapshot survives a concurrent revoke deleting the original
+        // mapping after StartSession loaded this request's authenticated guards.
+        $bindings[$device->guard] = $this->deviceManager->sessionBinding($device);
+        $session->put(self::SESSION_BINDINGS, $bindings);
+    }
+
     public function handleRequestHandled(RequestHandled $event): void
     {
         $request = $event->request;
-        $pending = $request->attributes->all(self::PENDING_DEVICES);
-        if ($pending === []) {
+        if (! $request->attributes->has(self::LOGIN_REQUEST)) {
             return;
         }
 
         $session = $request->session();
-        $devices = [];
-
-        foreach ($pending as $guard => $device) {
-            if (! $device instanceof Device || $device->guard !== (string) $guard) {
+        $bindings = $session->get(self::SESSION_BINDINGS);
+        $bindings = is_array($bindings) ? $bindings : [];
+        $active = [];
+        foreach ((array) config('auth.guards', []) as $guard => $settings) {
+            if (! is_string($guard) || ! is_array($settings)) {
                 continue;
             }
 
-            $auth = Auth::guard($device->guard);
+            // A pre-upgrade session can retain a guard marker after a revoke
+            // removed its only mapping. Require a verifiable binding even then.
+            $binding = $bindings[$guard] ?? null;
+            if ($binding === null && ($settings['driver'] ?? null) !== 'session') {
+                continue;
+            }
+
+            $auth = Auth::guard($guard);
             if (! $auth instanceof SessionGuard) {
                 continue;
             }
 
             $identifier = filament_loginguard_identifier($session->get($auth->getName()));
-            if ($identifier === '' || $identifier !== $device->user_identifier) {
+            if ($identifier === '') {
                 continue;
             }
 
-            // Reading the cached user avoids starting a remember-me login after
-            // the response's session has already been saved.
+            // Use the cached user or provider directly. Invoking user() here
+            // could trigger a remember-me login after middleware saved the session.
             $user = $auth->getUser() ?? $auth->getProvider()->retrieveById($identifier);
-            if ($user !== null && $user::class === $device->user_type && filament_loginguard_identifier($user->getAuthIdentifier()) === $identifier) {
-                $devices[] = $device;
+            if (! is_array($binding) || ! is_int($binding['id'] ?? null) || ($binding['guard'] ?? null) !== $guard
+                || ($binding['user_identifier'] ?? null) !== $identifier || $user === null
+                || ($binding['user_type'] ?? null) !== $user::class || filament_loginguard_identifier($user->getAuthIdentifier()) !== $identifier) {
+                $session->getHandler()->destroy($session->getId());
+
+                return;
             }
+            $active[] = ['id' => $binding['id'], 'guard' => $guard, 'user_type' => $user::class, 'user_identifier' => $identifier];
         }
 
-        if ($devices !== [] && ! $this->deviceManager->associatePersistedSession($devices, $session->getId())) {
+        $previousId = $request->attributes->get(self::PREVIOUS_SESSION);
+
+        try {
+            $mapped = $this->deviceManager->associatePersistedSession($active, $session->getId(), is_string($previousId) ? $previousId : null);
+        } catch (UniqueConstraintViolationException $exception) {
+            // A conflicting token owner must never be replaced by a rekey.
+            report($exception);
+            $mapped = false;
+        }
+
+        if (! $mapped) {
             $session->getHandler()->destroy($session->getId());
         }
     }

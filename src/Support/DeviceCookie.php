@@ -12,6 +12,8 @@ final class DeviceCookie
 {
     public const DEFAULT_NAME = 'filament_loginguard_device';
 
+    private const ROTATION = 'filament-loginguard.token-rotation';
+
     public static function name(): string
     {
         return filament_loginguard_config_string('filament-loginguard.devices.cookie.name', self::DEFAULT_NAME);
@@ -32,12 +34,38 @@ final class DeviceCookie
         return hash('sha256', $token);
     }
 
+    public static function replaceRevokedToken(string $previousHash): string
+    {
+        $token = self::generateToken();
+        request()->attributes->set(self::ROTATION, ['from' => $previousHash, 'to' => self::hash($token)]);
+
+        return $token;
+    }
+
+    /** @return array{from: string, to: string}|null */
+    public static function rotation(): ?array
+    {
+        $rotation = request()->attributes->all(self::ROTATION);
+        $token = self::get();
+        if (! is_string($rotation['from'] ?? null) || ! is_string($rotation['to'] ?? null)
+            || $token === null || self::hash($token) !== $rotation['to']) {
+            return null;
+        }
+
+        return ['from' => $rotation['from'], 'to' => $rotation['to']];
+    }
+
     /**
      * Queue the cookie onto the response. Encryption is handled by Laravel's
      * EncryptCookies middleware (the cookie is not in the "except" list).
      */
     public static function queue(string $token): void
     {
+        // A second guard can log in before the browser receives this response.
+        // It must resolve against the identity we are issuing, including a
+        // replacement token when the incoming identity was revoked.
+        request()->cookies->set(self::name(), $token);
+
         Cookie::queue(
             self::name(),
             $token,

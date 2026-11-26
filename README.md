@@ -57,6 +57,8 @@ Every panel user gets a **My Devices** page in their user menu — no admin perm
 
 Device identities are opaque cookie tokens: the browser holds a random token, the database stores only its SHA-256 hash, scoped per `guard + user model + user identifier`.
 
+Multiple session guards can sign in together or in separate requests from the same browser. Each authenticated account retains its device association when login regenerates the session. If an associated device is revoked while another login is in progress, the resulting session is discarded and the browser must sign in again.
+
 **Revocation and “remember me”:** “This isn't me” also rotates Laravel's shared account remember token. Previously issued remember cookies for that account stop working on every device. Other devices' already authenticated sessions remain signed in. Ordinary **Sign out** retains the existing recognition and remember-token behaviour.
 
 The device cap removes the oldest inactive identities. Active devices and the identity being registered are preserved, so the account can temporarily exceed the configured cap while all its devices are active.
@@ -466,7 +468,7 @@ Every push runs the [compatibility suite](.github/workflows/tests.yml), [extende
 | --- | --- |
 | Pest | 250+ tests on PHP 8.3 and 8.4 × Laravel 12 and 13, Ubuntu and Windows, plus the oldest supported Filament, 5.8.3 |
 | Database integration | The complete Pest suite on strict MySQL 8.4, in addition to the SQLite compatibility matrix |
-| Concurrency | Eight independent PHP processes call the production login service together; checks new-pair creation, exact counters, fixed-window rollover, IP/email aggregate lockouts and preservation of an active ban on SQLite and MySQL |
+| Concurrency | Eight independent PHP processes call the production login service together; checks first successful logins, new failure pairs, exact counters, fixed-window rollover, IP/email aggregate lockouts and preservation of an active ban on SQLite and MySQL. The MySQL job repeats all seven scenarios three times |
 | Browser | Chromium exercises login protection and the My Devices revocation flow against the Workbench application |
 | Coverage | PCOV line coverage with downloadable HTML, Clover and text reports; this measures executed code, not proof that every possible behaviour is tested |
 | PHPStan | Level 10, on `src`, `config` and `database` |
