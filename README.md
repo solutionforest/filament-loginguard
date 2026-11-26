@@ -1,145 +1,110 @@
-<a href="https://github.com/solutionforest/filament-loginguard" class="filament-hidden">
-<img style="width: 100%; max-width: 100%;" alt="filament-loginguard-art" src=".github/art/banner.jpeg">
-</a>
+# Filament LoginGuard
 
-<p align="center" class="flex items-center justify-center">
-    <a href="https://filamentphp.com/docs/5.x/panels/installation">
-        <img alt="FILAMENT 5.x" src="https://img.shields.io/badge/FILAMENT-5.x-EBB304?style=for-the-badge">
-    </a>
-    <a href="https://laravel.com/docs">
-        <img alt="LARAVEL 12 | 13" src="https://img.shields.io/badge/LARAVEL-12%20%7C%2013-FF2D20?style=for-the-badge&logo=laravel">
-    </a>
-    <a href="https://packagist.org/packages/solution-forest/filament-loginguard">
-        <img alt="Packagist" src="https://img.shields.io/packagist/v/solution-forest/filament-loginguard.svg?style=for-the-badge&logo=packagist">
-    </a>
-    <a href="https://github.com/solutionforest/filament-loginguard/actions?query=workflow%3Atests+branch%3A5.x" class="filament-hidden">
-        <img alt="Tests Passing" src="https://img.shields.io/github/actions/workflow/status/solutionforest/filament-loginguard/tests.yml?style=for-the-badge&logo=github&label=tests">
-    </a>
-    <a href="https://github.com/solutionforest/filament-loginguard/actions?query=workflow%3Afix-code-style+branch%3A5.x" class="filament-hidden">
-        <img alt="Code Style Passing" src="https://img.shields.io/github/actions/workflow/status/solutionforest/filament-loginguard/fix-code-style.yml?style=for-the-badge&logo=github&label=code%20style">
-    </a>
-    <a href="https://packagist.org/packages/solution-forest/filament-loginguard">
-        <img alt="Downloads" src="https://img.shields.io/packagist/dt/solution-forest/filament-loginguard.svg?style=for-the-badge">
-    </a>
-</p>
+[![Filament LoginGuard: brute-force protection, lockouts and session management for Filament](.github/art/banner.jpeg)](https://github.com/solutionforest/filament-loginguard)
 
-<h1 style="font-size:2em; font-weight:bold; display:block; margin:0.67em 0;">Filament LoginGuard</h1>
+[![Tests](https://github.com/solutionforest/filament-loginguard/actions/workflows/tests.yml/badge.svg)](https://github.com/solutionforest/filament-loginguard/actions/workflows/tests.yml)
+[![PHPStan](https://github.com/solutionforest/filament-loginguard/actions/workflows/phpstan.yml/badge.svg)](https://github.com/solutionforest/filament-loginguard/actions/workflows/phpstan.yml)
+[![Fix Code Style](https://github.com/solutionforest/filament-loginguard/actions/workflows/fix-code-style.yml/badge.svg)](https://github.com/solutionforest/filament-loginguard/actions/workflows/fix-code-style.yml)
+![PHP 8.3 | 8.4](https://img.shields.io/badge/PHP-8.3%20%7C%208.4-777bb4?logo=php&logoColor=white)
+![Laravel 12 | 13](https://img.shields.io/badge/Laravel-12%20%7C%2013-ff2d20?logo=laravel&logoColor=white)
+![Filament 5](https://img.shields.io/badge/Filament-5-f59e0b)
+![PHPStan level 4](https://img.shields.io/badge/PHPStan-level%204-2a5ea7)
+![License MIT](https://img.shields.io/badge/license-MIT-blue)
 
-Enterprise-grade login security for Filament and Laravel — persistent brute-force protection, escalating IP and email lockouts, and active-session management.
+**Enterprise-grade login security for Filament and Laravel.**
 
-> [!NOTE]
-> Filament already throttles its login page at 5 attempts per minute per IP. This package adds the missing **lockout layer** on top of that: persistent tracking, escalating bans, per-email protection and an admin UI.
+Persistent brute-force protection with escalating IP and email lockouts, self-service unlock, active-session management and device recognition — plus a Filament admin UI to watch it all. IP intelligence (country / city / ASN) adds the signals that risk-based login will build on.
+
+**[Changelog](CHANGELOG.md)** · **[Contributing](.github/CONTRIBUTING.md)** · **[Security policy](.github/SECURITY.md)**
+
+## Why
+
+Filament already throttles its login page at 5 attempts per minute per IP. That stops the simplest scripts, but it leaves real gaps:
+
+- **No memory.** Throttling forgets everything every minute — an attacker can keep probing forever, just a little slower.
+- **No per-account protection.** A bot rotating IPs can hammer one email address, and a bot rotating emails can hammer one IP.
+- **No escalation.** Every minute looks the same, so a determined attacker is never really stopped.
+- **No visibility.** You can't see who is attacking you, from where, or lock anyone out manually.
+
+Filament LoginGuard adds the missing lockout layer on top of Filament's throttle: persistent tracking, escalating bans, per-email and per-IP protection, self-service unlock for the people caught in the crossfire, and an admin UI.
 
 ## Features
 
-- 🔒 **Brute-Force Protection**
-  - 📦 Persistent per-IP/email attempt tracking
-  - 📈 Escalating IP & email lockouts
-  - 🕸️ Cross-email (per-IP) and cross-IP (per-email) aggregation
-  - 🧠 Attempt decay window
-  - 🎯 IP & email whitelists
-  - 🔓 Self-service unlock link (anti-DoS) mailed to the blocked address
-  - 🔔 Administrator lockout notifications (cooldown + queue support)
-- 👥 **Session Management**
-  - 🖥️ Active-session listing with "last active" state
-  - 🆕 New-device detection with optional email alert
-  - 🔒 Concurrent-session limits with oldest-first eviction
-  - 🔄 One-click session revoke
-  - 📱 **My Devices** — self-service device list with sign-out, "This isn't me" and device forgetting (cookie-token device identity)
-- 🌍 **IP Intelligence (GeoIP enrichment)**
-  - 📍 Resolves country / city / ASN / coordinates from the login IP (MaxMind GeoLite2)
-  - 🆕 "New country / new ASN" signals per account — the foundation for risk-based login (signals only, never blocks)
-  - 🏷️ Country badge on the Login Attempts admin table
-- 🧰 **Filament Management Interface**
-  - 📋 Login Attempts page — inspect & unblock recorded attempts
-  - 📊 Failed-attempts / lockout stats widget
-  - 📈 Failure-trend & top-attacked charts (7/30-day trend, Top-10 emails & IPs)
-  - 📤 CSV export of attempts & sessions (via Filament's export system)
-  - 🛡️ Gate-based per-page authorization
+### Brute-force protection
 
-<div class="filament-hidden">
+- **Persistent tracking.** Failed attempts are recorded per (IP, email) pair — not per minute.
+- **Escalating lockouts.** The first lockout lasts `initial_minutes`; the 2nd, 3rd and later ones step up through `escalation_hours` (e.g. 1 day, 3 days, 7 days+). The ladder lives in its own append-only table, so cleanup never resets it.
+- **Cross-email and cross-IP aggregation.** With `tracking.per_ip`, the sum of attempts across all emails from one IP triggers an IP lockout — rotating emails doesn't help. `tracking.per_email` does the same across IPs for one email.
+- **Attempt decay window.** Failures only accumulate inside the same `attempts_window_minutes` window; a slow drip just under the window length never reaches the threshold.
+- **Whitelists.** IPs and emails that are never locked out. Localhost is whitelisted by default.
+- **Self-service unlock.** The lockout email can carry a signed, single-use "unlock now" link, so a real owner can clear a lock without waiting (see [Limits](#limits)).
+- **Admin notifications.** Email admins on every lockout, with a per-IP cooldown and optional queueing. A `LoginLockedOut` event fires too, for Slack / webhooks.
+- **Proxy-aware.** Set `lockout.trusted_proxies` and the real client IP is read from `X-Forwarded-For`, so lockouts key on the client, not the CDN.
 
-## Compatibility
+### Session management
 
-| Requirement | Version |
-|-------------|---------|
-| PHP         | 8.3+    |
-| Laravel     | 12 or 13 |
-| Filament    | 5.x (≥ 5.8.3, Livewire 4) |
+- **Active-session listing** with a human-readable "last active" state and one-click revoke.
+- **New-device detection.** Each login's browser + platform is fingerprinted; the first sighting is flagged and can email the account owner.
+- **Concurrent-session limits.** Cap sessions per user; the oldest are evicted first.
 
-> Earlier 5.x releases have known security advisories; require at least Filament 5.8.3. Laravel 11 is no longer supported — it is end-of-life and its final releases carry unpatched security advisories.
+### My Devices (self-service)
 
-<b>Table of Contents</b>
+Every panel user gets a **My Devices** page in their user menu — no admin permission needed, and the query is always scoped server-side to the authenticated user:
 
-- [Features](#features)
-- [Compatibility](#compatibility)
-- [Installation](#installation)
-  - [1. Install the Package](#1-install-the-package)
-  - [2. Publish the Config and Migrate](#2-publish-the-config-and-migrate)
-  - [3. Register the Admin Pages](#3-register-the-admin-pages)
-- [How it works](#how-it-works)
-- [Session management](#session-management)
-- [IP intelligence (GeoIP enrichment)](#ip-intelligence-geoip-enrichment)
-- [Configuration](#configuration)
-- [Maintenance](#maintenance)
-- [Roadmap](#roadmap)
-- [Testing](#testing)
-- [Changelog](#changelog)
-- [Contributing](#contributing)
-- [Security Vulnerabilities](#security-vulnerabilities)
-- [Credits](#credits)
-- [License](#license)
+- **This device** pinned on top.
+- **Other signed-in devices**, each with **Sign out** and **"This isn't me"** (revokes that device's sessions *and* its identity).
+- **Recently signed out**, collapsible, with **Forget device**.
 
-</div>
+Device identities are opaque cookie tokens: the browser holds a random token, the database stores only its SHA-256 hash, scoped per `guard + user model + user identifier`.
 
-## Installation
+### IP intelligence (GeoIP enrichment)
 
-### 1. Install the Package
+A foundation layer that resolves the login IP to country / city / ASN / coordinates (MaxMind GeoLite2) and flags "new country / new ASN" per account. It **only produces signals** — it never blocks. Off by default; see [IP intelligence](#ip-intelligence).
 
-You can install the package via composer:
+### Admin interface
+
+- **Login Attempts** page — inspect and unblock recorded attempts, with a **Country** badge per IP.
+- **User Sessions** page — list and revoke active sessions.
+- **Charts** — daily failure trend (7/30-day) and Top-10 attacked emails and IPs.
+- **CSV export** — attempts and sessions, via Filament's export system.
+- **Gate-based authorization** — every page and action can be gated independently.
+
+![Login Attempts page](.github/art/attempts-page.png)
+
+![User Sessions page](.github/art/sessions-page.png)
+
+## Requirements
+
+| | Supported |
+| --- | --- |
+| PHP | 8.3, 8.4 |
+| Laravel | 12, 13 |
+| Filament | 5.8.3 or later |
+| Database | Any Laravel-supported database (MySQL / MariaDB, PostgreSQL, SQLite, SQL Server) |
+| Session driver | `database`, for session management and My Devices |
+| Queue | Optional — for lockout emails and CSV export |
+| Optional | `geoip2/geoip2` + MaxMind GeoLite2 files, for IP intelligence |
+
+> Earlier Filament 5.x releases carry known security advisories — require at least 5.8.3. Laravel 11 is end-of-life and no longer supported.
+
+Every combination of PHP and Laravel is tested on each push. See [Quality](#quality).
+
+## Quick start
+
+**1. Install the package**
 
 ```bash
 composer require solution-forest/filament-loginguard
+php artisan migrate
 ```
 
-### 2. Publish the Config and Migrate
-
-Migrations are loaded and run automatically (`runsMigrations()`), so you only need to publish the config file and run `migrate`:
+Migrations run automatically (`runsMigrations()`). Optionally publish the config:
 
 ```bash
 php artisan vendor:publish --tag="filament-loginguard-config"
-php artisan migrate
 ```
 
-The interactive install command publishes the config file for you and reminds you to star the repo:
-
-```bash
-php artisan filament-loginguard:install
-```
-
-Optionally, you can publish the views and translations using:
-
-```bash
-php artisan vendor:publish --tag="filament-loginguard-views"
-php artisan vendor:publish --tag="filament-loginguard-translations"
-```
-
-#### CSV export prerequisites
-
-The CSV export buttons are built on [Filament's export system](https://filamentphp.com/docs/5.x/actions/export), which needs its own database tables. Fresh apps may be missing them — run:
-
-```bash
-php artisan make:queue-batches-table
-php artisan make:notifications-table
-php artisan vendor:publish --tag=filament-actions-migrations
-php artisan migrate
-```
-
-Without these, the first export attempt fails with a "table not found" error (`exports`, `job_batches` or `notifications`). Exports also run through the queue, so a queue worker (or the `sync` driver) must be available.
-
-### 3. Register the Admin Pages
-
-To enable the **admin pages** (Login Attempts: view / unblock recorded attempts; User Sessions: list / revoke active sessions), register the plugin in your panel provider, e.g. `app/Providers/Filament/AdminPanelProvider.php`:
+**2. Add the plugin to your panel** (for the admin pages)
 
 ```php
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
@@ -152,80 +117,32 @@ public function panel(Panel $panel): Panel
 }
 ```
 
-The core protection works **without** registering the plugin — only the admin pages need it. Each page can also be disabled independently via `pages.attempts.enabled` / `pages.sessions.enabled`.
+The core protection works **without** registering the plugin — only the admin pages need it.
+
+**3. Optional: enable IP intelligence**
+
+```bash
+composer require geoip2/geoip2
+```
+
+Then point the config at MaxMind GeoLite2 `.mmdb` files and set `ip_intel.enabled` to `true`. See [IP intelligence](#ip-intelligence).
 
 ## How it works
 
-The package hooks into Laravel's core auth events rather than any specific UI, so it protects **every** login flow that goes through `Auth::attempt()`:
-
-- **Native Laravel auth** — the Laravel Starter Kits, Breeze, and Fortify all authenticate through `Auth::attempt()`, so their login forms are protected out of the box.
-- **Filament** — the built-in login page (and the Filament Starter Kit, which extends it) calls `attemptWhen()`, which fires the same events.
-- **Custom controllers** — anything that calls `Auth::attempt()` directly works too.
-
-> Social login (OAuth/Socialite) has no password to brute-force, so it doesn't fire `Attempting`/`Failed`; it still fires `Login`, so success tracking and session management apply.
+The package hooks into Laravel's core auth events rather than any specific UI, so it protects **every** login flow that goes through `Auth::attempt()` — native Laravel (Breeze, the starter kits), Filament, and custom controllers alike.
 
 | Event | Action |
 | --- | --- |
-| `Illuminate\Auth\Events\Attempting` | If the IP or email is currently locked out, a `ValidationException` with the lockout message is thrown before any credential work happens. |
-| `Illuminate\Auth\Events\Failed` | The failure is recorded for the (IP, email) pair. When the threshold is reached, the IP and/or email is locked out and admins are notified by email. |
-| `Illuminate\Auth\Events\Login` | A successful login resets the failed-attempt counter for that `(IP, email)` pair and releases the email-scoped lock. IP-scoped locks remain in force so one valid login cannot unblock a shared or attacking IP. |
+| `Illuminate\Auth\Events\Attempting` | If the IP or email is locked out, a `ValidationException` with the lockout message is thrown before any credential work. |
+| `Illuminate\Auth\Events\Failed` | The failure is recorded for the (IP, email) pair. At the threshold, the IP and/or email is locked out and admins are notified. |
+| `Illuminate\Auth\Events\Login` | A success resets the pair's counter and releases the email-scoped lock. IP-scoped locks stay, so one valid login can't unblock a shared or attacking IP. |
 
-Lockout semantics:
+Social login (OAuth / Socialite) has no password to brute-force, so it doesn't fire `Attempting` / `Failed` — but it still fires `Login`, so success tracking and session management apply.
 
-- Rows are stored per **(IP, email) pair** in the `filament_loginguard_attempts` table.
-- With `tracking.per_ip` enabled, the **sum** of attempts across all emails from one IP triggers a lockout of that IP — rotating emails doesn't help attackers. `tracking.per_email` does the same across IPs for one email.
-- Lock durations **escalate**: the first lockout lasts `lockout.initial_minutes`; the 2nd, 3rd and subsequent lockouts use `lockout.escalation_hours` (e.g. `[24, 72, 168]` = 1 day, 3 days, 7 days+). The last value repeats for every further lockout. Escalation history is stored in its own append-only table, so cleaning up old attempt rows never resets the ladder.
-- Attempts are counted in a **fixed window**: failures only accumulate while they fall inside the same `attempts_window_minutes` window; the first failure after the window expires restarts the counter at zero. A slow drip just under the window length never reaches the threshold.
-- A lock is **never extended** by further attempts while it is active; a successful login resets the pair's counter and releases the email lock (forgiving the legitimate owner without unblocking the shared IP).
-- The lockout message is rendered in the Filament login form (`data.email` error key) and as a standard `email` validation error in non-Filament forms (redirect back for web requests, 422 for JSON).
-- Localhost (`127.0.0.1`, `::1`) is whitelisted by default.
-- **Behind a proxy/CDN?** Set `lockout.trusted_proxies` to your proxy IPs or CIDR ranges. When the immediate request IP matches one, the real client IP is read from `X-Forwarded-For` (walking right-to-left past trusted proxies, so clients cannot spoof it). Laravel's own TrustProxies middleware may already rewrite `request()->ip()` — prefer configuring it there if you use the standard mechanism.
-- A `LoginLockedOut` event is dispatched on every lockout — listen for it to wire up custom alerting (Slack, webhooks, etc.) alongside or instead of the built-in email notification.
-
-> [!WARNING]
-> **Email lockouts can be abused as a denial-of-service vector.** An attacker who knows (or guesses) an account's email can deliberately fail logins to lock that email out — the legitimate owner is then blocked too. Mitigations:
->
-> - Enable **self-service unlock** (`lockout.notifications.self_unlock.enabled`): the lockout email sent to the blocked address carries a signed, single-use "unlock now" link (a confirmation page, then the unlock — the URL contains only an opaque token, never the email). The real owner can clear the lock immediately. Attempt counters are kept, so repeated lockouts still escalate. IP locks are never lifted this way.
-> - Whitelist critical accounts via `lockout.whitelist.emails` so they can always log in.
-> - Keep `lockout.initial_minutes` moderate and review the `escalation_hours` ladder.
-> - If you run behind a proxy/CDN, configure `lockout.trusted_proxies` (below) so lockouts key on the *real* client IP — otherwise all traffic appears to come from the proxy IP and a single attacker can lock out everyone.
-
-![Login Attempts page](.github/art/attempts-page.png)
-
-The page also includes visualization and reporting tools:
-
-- **Charts** (`pages.attempts.charts`): a daily failed-attempts trend with a 7/30-day filter plus Top-10 leaderboards for attacked emails and source IPs — attack waves are obvious at a glance.
-- **CSV export** (`pages.attempts.export`): export the table (respecting your filters) via Filament's export system. Exports run through the queue, so a queue worker must be available in production.
-
-## Session management
-
-Requires `SESSION_DRIVER=database`. The **User Sessions** admin page lists every active session with a human-readable "last active" state (Laravel updates `last_activity` on every request, including Livewire clicks) and a one-click Revoke.
-
-![User Sessions page](.github/art/sessions-page.png)
-
-- **New-device detection**: each login's browser+platform is fingerprinted (`sessions.new_device`); a session is flagged "New" on the page when its fingerprint was first seen within `window_hours`, and an optional email notifies the account owner the first time a device is seen.
-- **Concurrent session limits**: set `sessions.concurrent_limit` to cap sessions per user — the oldest sessions are evicted to make room when a new login would exceed the limit.
-- **CSV export** (`pages.sessions.export`): export the active-session list as CSV (via Filament's export system).
-- Closing the browser without logging out (or backgrounding the tab) simply stops updating `last_activity`, so the session ages out naturally and expires after `session.lifetime`; sweep expired rows with the `filament-loginguard:cleanup-sessions` command.
-
-- Closing the browser without logging out (or backgrounding the tab) simply stops updating `last_activity`, so the session ages out naturally and expires after `session.lifetime`; sweep expired rows with the `filament-loginguard:cleanup-sessions` command.
-
-## My Devices (self-service account security)
-
-Every panel user gets a **My Devices** entry in the user menu (no admin permission required — the query is always scoped server-side to the authenticated user). Devices are grouped by live-session state:
-
-- **This device** — pinned on top, marked "This device", with no destructive actions.
-- **Other signed-in devices** — devices with live sessions, each with **Sign out** (delete that device's sessions, keep recognition) and **"This isn't me"** (a security incident: revoke all device sessions AND the identity — the cookie token can never silently become recognized again).
-- **Recently signed out** — a collapsible section of devices with no live session, each with **Forget device** (normal removal; the next sign-in from that browser is treated as a new device).
-
-Each row shows a type-aware icon (desktop / mobile / tablet, falling back to a terminal icon for scripts and unrecognized clients), the device name, "Last active · IP", and a **View details** slide-over (client, browser/OS, first seen, last active, last IP, active-session count and the full user agent). A **Sign out other sessions** header action deletes all other sessions while keeping the current one and all device recognitions — a known device is never shown as online just because it was seen before.
-
-Device identities are powered by an opaque cookie token: the browser holds a random token, the database only stores its SHA-256 hash, and identities are scoped per `guard + user model + user identifier` — so shared browsers, UUID/ULID users and multi-guard panels never collide. Devices beyond `devices.retention_days` with no active sessions are removed by `filament-loginguard:cleanup-devices`.
-
-## IP intelligence (GeoIP enrichment)
+## IP intelligence
 
 > [!NOTE]
-> This is a **foundation layer**: it enriches logins with location/network signals (country, city, ASN, coordinates) and flags "new country / new ASN" per account. It **only produces signals** — it never blocks, challenges or otherwise changes the login flow. The signals are the input for the risk-based login and Geo/ASN blocking roadmap items.
+> This is a **foundation layer**: it enriches logins with location/network signals and flags "new country / new ASN" per account. It **only produces signals** — it never blocks, challenges or otherwise changes the login flow. The signals are the input for the risk-based login and Geo/ASN blocking roadmap items.
 
 ### What gets recorded
 
@@ -236,7 +153,7 @@ On every failed and successful login, the package resolves the client IP against
 - `latitude` / `longitude` / `accuracy_radius_km`
 - `asn` / `asn_organization` — autonomous system number and ISP name
 
-On a successful login, two extra signals are computed against a per-account location history: `is_new_country` and `is_new_asn` — whether the account has not been seen from this country / ASN within `novelty_window_days`. The history lives in the `filament_loginguard_location_history` table (keyed by `guard + user type + user identifier`). The Login Attempts admin table also gains a **Country** badge per IP.
+On a successful login, two extra signals are computed against a per-account location history: `is_new_country` and `is_new_asn` — whether the account has not been seen from this country / ASN within `novelty_window_days`. The history lives in the `filament_loginguard_location_history` table (keyed by `guard + user type + user identifier`).
 
 ### Enabling it
 
@@ -306,7 +223,7 @@ The feature is **off by default** and optional — it needs the `geoip2/geoip2` 
 
 ### Failure behaviour
 
-IP intelligence is deliberately **fail-safe**. If it's disabled, the package is missing, the files are missing, or the IP is unmapped, `lookup()` returns `null` and the login proceeds exactly as before — location enrichment can never break authentication. When disabled or unresolved, no location metadata is written and no history rows are created.
+IP intelligence is deliberately **fail-safe**. If it's disabled, the package is missing, the files are missing, or the IP is unmapped, `lookup()` returns `null` and the login proceeds exactly as before — location enrichment can never break authentication.
 
 ### Privacy
 
@@ -314,17 +231,23 @@ Resolved IP location is personal data. Before enabling, consider your obligation
 
 - It is **off by default** — nothing is collected until you opt in.
 - The raw IP is already stored by the lockout layer; this feature additionally stores a country code, city and ASN. Keep it scoped to what you need (e.g. country + ASN only, skipping `city` and coordinates).
-- `filament-loginguard:cleanup-attempts` / `cleanup-sessions` / `cleanup-devices` do not touch location history; treat `filament_loginguard_location_history` like your other security logs and define a retention policy for it.
+- Treat `filament_loginguard_location_history` like your other security logs and define a retention policy for it.
 - Disclose this in your privacy policy.
 
 ## Configuration
 
-This is the contents of the published config file (`config/filament-loginguard.php`), grouped into six sections: `lockout` (brute-force protection behavior), `sessions` (active-session tracking behavior), `devices` (device identity for My Devices), `ip_intel` (GeoIP enrichment), `maintenance` (optional auto-scheduling), and `pages` (Filament admin page wiring for both features):
+Behaviour is set in `config/filament-loginguard.php`, published with:
+
+```bash
+php artisan vendor:publish --tag="filament-loginguard-config"
+```
+
+Every option has a default and is documented inline. The ones you'll most likely touch:
 
 ```php
 return [
     'lockout' => [
-        'enabled' => true,                 // master switch
+        'enabled' => true,
         'max_attempts' => 10,              // failures allowed inside the window before a lockout
         'initial_minutes' => 15,           // duration of the first lockout
         'escalation_hours' => [24, 72, 168], // 2nd, 3rd, 4th+ lockout durations; last value repeats
@@ -349,145 +272,62 @@ return [
                 'cooldown_minutes' => 60,  // at most one notification per IP per window
                 'queue' => false,          // false = sync; queue name string = queued
             ],
-            'self_unlock' => [
-                'enabled' => false,        // mail a signed, single-use unlock link to the blocked address
-                'link_ttl_minutes' => 60,  // how long the unlock link stays valid
-                'queue' => false,          // false = sync; queue name string = queued
-            ],
-        ],
-    ],
-
-    // Active user sessions (requires SESSION_DRIVER=database).
-    'sessions' => [
-        'enabled' => true,                 // master switch for session security features
-        'table' => 'sessions',
-        'online_threshold_seconds' => 60,  // "online now" cutoff
-        'user_model' => null,              // null = auth.providers.users.model
-        'concurrent_limit' => null,        // max concurrent sessions per user; null = unlimited
-
-        'new_device' => [
-            'enabled' => true,             // @deprecated v0.7 — see devices.*
-            'window_hours' => 24,          // sessions first seen within this window are flagged "New"
-
-            'notifications' => [
-                'enabled' => false,        // emails the account owner the first time a device is seen
-                'mail' => [
-                    'queue' => false,
-                ],
-            ],
-        ],
-    ],
-
-    // Device identity (My Devices): opaque cookie tokens, hashed in the DB.
-    'devices' => [
-        'enabled' => true,                 // master switch for the device identity layer
-
-        'cookie' => [
-            'name' => 'filament_loginguard_device',
-            'lifetime_days' => 365,
-            'same_site' => 'lax',
-        ],
-
-        'retention_days' => 90,            // drop devices with no sessions after this many days (0 = keep)
-        'max_devices_per_user' => 20,      // hard cap of device identities per account (0 = unlimited)
-
-        'notifications' => [
-            'new_device' => false,         // email the account owner on a new device sign-in
-            'mail' => [
+            'self_unlock' => [             // anti-DoS: signed, single-use unlock link to the blocked address
+                'enabled' => false,
+                'link_ttl_minutes' => 60,
                 'queue' => false,
             ],
         ],
     ],
 
-    // IP intelligence (GeoIP enrichment): resolves the login IP against local
-    // MaxMind GeoLite2 databases. Signals only — never blocks. Off by default.
-    'ip_intel' => [
-        'enabled' => false,                // master switch
-        'databases' => [                   // local .mmdb paths; each optional
-            'country' => null,
-            'city' => null,
-            'asn' => null,
-        ],
-        'novelty_window_days' => 90,       // "new country / ASN" lookback window
+    'sessions' => [                        // requires SESSION_DRIVER=database
+        'enabled' => true,
+        'concurrent_limit' => null,        // max concurrent sessions per user; null = unlimited
+        'new_device' => ['enabled' => true, 'window_hours' => 24],
     ],
 
-    'maintenance' => [
-        'cleanup_attempts' => [           // delete stale attempt records
-            'enabled' => false,           // false = schedule it yourself in routes/console.php
-            'expression' => '0 0 * * *',  // cron expression (default: daily at midnight)
-        ],
+    'devices' => [                         // My Devices identity layer
+        'enabled' => true,
+        'retention_days' => 90,
+        'max_devices_per_user' => 20,
+        'notifications' => ['new_device' => false],
+    ],
 
-        'cleanup_sessions' => [           // delete expired session rows (needs SESSION_DRIVER=database)
-            'enabled' => false,
-            'expression' => '0 * * * *',  // cron expression (default: hourly)
-        ],
+    'ip_intel' => [                        // GeoIP enrichment — off by default
+        'enabled' => false,
+        'databases' => ['country' => null, 'city' => null, 'asn' => null],
+        'novelty_window_days' => 90,
     ],
 
     'pages' => [
-        'attempts' => [
-            'enabled' => true,
-            'slug' => 'login-guard',
-            'cluster' => null,             // optional Filament Cluster class-string to nest the page under
-            'navigation_label' => null,    // null falls back to translations
-            'navigation_icon' => 'heroicon-o-shield-exclamation',
-            'navigation_group' => null,
-            'navigation_sort' => null,
-            'authorize' => null,           // gates everything; the finer keys below win when set
-            'authorize_view' => null,      // viewing the page
-            'authorize_unblock' => null,   // unblock / bulk-unblock actions
-            'stats_widget' => true,        // show the failed-attempts / lockout stats widget
-            'charts' => true,              // show the failure-trend & top-attacked charts
-            'export' => true,              // allow CSV export of the attempts table
-        ],
-
-        'sessions' => [
-            'enabled' => true,             // admin page only; session security uses sessions.enabled
-            'slug' => 'user-sessions',
-            'cluster' => null,
-            'navigation_label' => null,
-            'navigation_icon' => 'heroicon-o-computer-desktop',
-            'navigation_group' => null,
-            'navigation_sort' => null,
-            'authorize' => null,
-            'authorize_view' => null,      // viewing the page
-            'authorize_revoke' => null,    // revoke / bulk-revoke actions
-            'export' => true,              // allow CSV export of the sessions table
-        ],
-
-        // Self-service account security (no admin permission needed).
-        'my_devices' => [
-            'enabled' => true,
-            'slug' => 'my-devices',
-            'user_menu' => true,           // show "My Devices" in the user menu
-            'navigation' => false,         // also list it in the panel navigation
-            'navigation_label' => null,
-            'navigation_icon' => 'heroicon-o-device-phone-mobile',
-            'navigation_group' => null,
-            'navigation_sort' => null,
-        ],
+        'attempts' => ['authorize' => null, 'charts' => true, 'export' => true],
+        'sessions' => ['authorize' => null, 'export' => true],
+        'my_devices' => ['enabled' => true, 'user_menu' => true],
     ],
 ];
 ```
 
+### Authorization
+
 > [!WARNING]
-> Both admin pages are visible to **any authenticated panel user** by default. Restrict them with the `authorize` option, which accepts a permission/ability name checked via `$user->can(...)`. For finer control, use the split keys: `authorize_view` gates viewing the page and `authorize_unblock` / `authorize_revoke` gate the security actions — e.g. grant reviewers view-only access and let operators perform unblocks/revokes.
->
-> **With `spatie/laravel-permission`** (e.g. when using Filament Shield), the string is a permission name — just create the permission and assign it to a role; no Gate is required:
->
-> ```php
-> // config/filament-loginguard.php
-> 'pages' => [
->     'attempts' => ['authorize' => 'view-filament-loginguard', /* ... */],
->     'sessions' => ['authorize' => 'view-filament-loginguard', /* ... */],
-> ],
-> ```
->
-> **Without spatie**, define a Gate for the ability in a service provider:
->
-> ```php
-> // app/Providers/AppServiceProvider.php
-> Gate::define('view-filament-loginguard', fn (User $user) => $user->can('access-admin-settings'));
-> ```
+> Both admin pages are visible to **any authenticated panel user** by default. Restrict them with the `authorize` option, which accepts a permission/ability name checked via `$user->can(...)`. Use the split keys for finer control: `authorize_view` gates viewing, and `authorize_unblock` / `authorize_revoke` gate the security actions.
+
+**With `spatie/laravel-permission`** (e.g. when using Filament Shield), the string is a permission name — create the permission and assign it to a role; no Gate is required:
+
+```php
+// config/filament-loginguard.php
+'pages' => [
+    'attempts' => ['authorize' => 'view-filament-loginguard', /* ... */],
+    'sessions' => ['authorize' => 'view-filament-loginguard', /* ... */],
+],
+```
+
+**Without spatie**, define a Gate for the ability in a service provider:
+
+```php
+// app/Providers/AppServiceProvider.php
+Gate::define('view-filament-loginguard', fn (User $user) => $user->can('access-admin-settings'));
+```
 
 ## Maintenance
 
@@ -505,7 +345,7 @@ php artisan filament-loginguard:cleanup-sessions
 php artisan filament-loginguard:cleanup-sessions --all   # delete every session
 ```
 
-Schedule both in `routes/console.php` for automatic upkeep:
+Schedule both in `routes/console.php`:
 
 ```php
 use Illuminate\Support\Facades\Schedule;
@@ -514,36 +354,55 @@ Schedule::command('filament-loginguard:cleanup-attempts')->daily();
 Schedule::command('filament-loginguard:cleanup-sessions')->hourly();
 ```
 
-Alternatively, set `maintenance.cleanup_attempts.enabled` / `maintenance.cleanup_sessions.enabled` to `true` in the config and the package registers them for you using each command's `expression` cron value (`cleanup-sessions` only when `SESSION_DRIVER=database`). Prefer scheduling manually when you need a custom frequency, timezone, or `onOneServer()`.
+Alternatively, set `maintenance.cleanup_attempts.enabled` / `maintenance.cleanup_sessions.enabled` to `true` and the package registers them for you using each command's `expression` cron value.
+
+## Quality
+
+Every push runs [`tests.yml`](.github/workflows/tests.yml):
+
+| Check | What it covers |
+| --- | --- |
+| Pest | 200+ tests on PHP 8.3 and 8.4 × Laravel 12 and 13 with Filament 5, and on the oldest supported Filament, 5.8.3 |
+| PHPStan | Level 4, on `src`, `config` and `database` |
+| Pint | Laravel's code style |
+
+To run them yourself:
+
+```bash
+composer test        # Pest
+composer analyse     # PHPStan
+composer test:lint   # Pint
+```
+
+## Limits
+
+- **Email lockouts can be abused as a denial-of-service vector.** An attacker who knows an account's email can deliberately fail logins to lock it out. Mitigate with self-service unlock, `whitelist.emails` for critical accounts, and a moderate `initial_minutes`. Behind a proxy/CDN, set `lockout.trusted_proxies` — otherwise everyone behind the proxy shares one IP.
+- **Session management and My Devices require `SESSION_DRIVER=database`.**
+- **CSV export needs Filament's export tables** (`exports`, `job_batches`, `notifications`) and a queue worker.
+- **IP intelligence is opt-in and fail-safe**, and needs `geoip2/geoip2` plus MaxMind database files, which MaxMind's licence does not permit us to redistribute.
 
 ## Roadmap
 
-Planned features, roughly in the order they are likely to land. Suggestions and PRs welcome — open an issue to discuss.
+Planned features, roughly in the order they are likely to land. Suggestions and PRs welcome.
 
-- [ ] **Progressive response & CAPTCHA** — soften the cliff between "allowed" and "locked out". After a configurable number of failures, the login form requires a CAPTCHA (Cloudflare Turnstile or hCaptcha) instead of blocking outright; only repeated failures beyond a second threshold trigger a lockout. Shared-IP environments (offices behind NAT) stop being collateral damage, while bots fail the challenge automatically.
-- [ ] **Risk-based login (adaptive authentication)** — score every login from signals the package already collects (unseen device fingerprint, new IP range, unusual time of day, recent failure counts) and respond proportionally: allow, step-up verification (email code), or block and alert the account owner. An attacker with a stolen password is challenged on an unfamiliar device, while the legitimate owner logs in without noticing anything. *(The IP-intelligence foundation — country / ASN / city signals and `is_new_country` / `is_new_asn` — now ships and feeds this item.)*
-- [x] **My devices (self-service account activity)** — a per-user panel section (like Google's "Your devices") listing the user's own signed-in devices — browser, OS, IP, last active — with a "View details" slide-over, one-click "This isn't me" revoke and a "sign out other sessions" button. Users can react to suspicious logins themselves instead of waiting for an admin. *(shipped in v0.7.0 — powered by opaque device-token identities)*
-- [ ] **Geo / ASN blocking** — resolve the login source against an IP geolocation database (e.g. MaxMind GeoLite2) and optionally block or flag traffic by country or ASN. Blocking datacenter ASNs is a very cheap way to cut most scripted attacks without touching residential users; flagged attempts get a country badge on the admin pages. *(The GeoIP resolution foundation — country / ASN lookup and the admin country badge — now ships; the actual block/flag rules are what's left.)*
-- [x] **Charts widget** — visualize the lockout stats that the numeric widget already tracks: a daily failed-attempts trend for the last 7/30 days and Top-10 leaderboards (attacked emails, source IPs, devices). Makes attack waves obvious at a glance. *(shipped in v0.6.0)*
-- [ ] **Slack / Telegram / Webhook notifications** — deliver lockout alerts beyond email via Laravel notification channels — a Slack channel is where on-call engineers actually look. Configured per channel (webhook URL, queue) alongside the existing mail notifications.
-- [ ] **Cloudflare integration** — push lockouts to the edge: when an IP is locked out, automatically create a block rule in your Cloudflare zone via the API (and optionally remove it on unlock). Attack traffic is dropped at the CDN instead of ever reaching Laravel, which changes the game under volumetric attacks.
-- [x] **CSV export** — export filtered Login Attempts and User Sessions as CSV from the admin tables for compliance audits (ISO 27001 / SOC 2), incident forensics, and management reports. *(shipped in v0.6.0)*
+- [ ] **Progressive response & CAPTCHA** — soften the cliff between "allowed" and "locked out" with a CAPTCHA step before the lockout.
+- [ ] **Risk-based login (adaptive authentication)** — score every login from signals the package already collects and respond proportionally. *(The IP-intelligence foundation now ships and feeds this item.)*
+- [x] **My devices** — self-service per-user device list with "This isn't me" revoke. *(shipped in v0.7.0)*
+- [ ] **Geo / ASN blocking** — block or flag traffic by country or ASN. *(The GeoIP resolution foundation now ships; the block/flag rules are what's left.)*
+- [x] **Charts widget** — failure trend and Top-10 leaderboards. *(shipped in v0.6.0)*
+- [ ] **Slack / Telegram / Webhook notifications** — deliver lockout alerts beyond email.
+- [ ] **Cloudflare integration** — push lockouts to the edge.
+- [x] **CSV export** — export attempts and sessions for compliance audits. *(shipped in v0.6.0)*
 
-## Testing
+## Changelog and versions
 
-```bash
-composer test
-```
-
-## Changelog
-
-Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
+Releases follow [Semantic Versioning](https://semver.org), and every change is listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 
 Please see [CONTRIBUTING](.github/CONTRIBUTING.md) for details.
 
-## Security Vulnerabilities
+## Security vulnerabilities
 
 Please review [our security policy](.github/SECURITY.md) on how to report security vulnerabilities.
 
