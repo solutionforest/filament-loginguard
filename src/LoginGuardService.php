@@ -171,13 +171,9 @@ final class LoginGuardService
      * forever, because each window only counts failures that actually happened
      * inside it.
      *
-     * The counter rollover + increment + threshold check + lock application run
-     * inside one transaction with a row-level `lockForUpdate()` on the attempt
-     * row, so concurrent failures for the SAME (ip, email) pair can no longer
-     * race the window rollover (both requests previously could reset the
-     * counter and both end up at 1). Cross-row aggregate races (two different
-     * emails from one IP failing at the same instant) are narrowed but not
-     * fully eliminated — see the CHANGELOG notes.
+     * The pair's row is locked for rollover and increment. On MySQL and MariaDB,
+     * current reads also cover scope totals so an earlier snapshot cannot miss
+     * attempts committed by concurrent transactions.
      */
     public function recordFailure(string $ip, string $email, ?string $userAgent = null): LockoutResult
     {
@@ -188,8 +184,11 @@ final class LoginGuardService
         $ips = IpAddress::storedKeys($ip);
         $ip = $ips[0];
 
+        $driver = DB::connection()->getDriverName();
+        $useCurrentScopeReads = in_array($driver, ['mysql', 'mariadb'], true);
+
         /** @var LockoutResult $result */
-        $result = DB::transaction(function () use ($ip, $ips, $email, $userAgent): LockoutResult {
+        $result = DB::transaction(function () use ($ip, $ips, $email, $userAgent, $driver, $useCurrentScopeReads): LockoutResult {
             $now = Carbon::now();
             $maxAttempts = filament_loginguard_config_int('filament-loginguard.lockout.max_attempts', 10);
             $windowMinutes = filament_loginguard_config_int('filament-loginguard.lockout.attempts_window_minutes', 30);
@@ -197,7 +196,7 @@ final class LoginGuardService
             $trackIp = (bool) config('filament-loginguard.lockout.tracking.per_ip', true);
             $trackEmail = (bool) config('filament-loginguard.lockout.tracking.per_email', true);
 
-            if (DB::connection()->getDriverName() === 'sqlite') {
+            if ($driver === 'sqlite') {
                 // SQLite cannot always promote a read transaction to a writer.
                 // Start with a conditional rollover so writers wait before taking a snapshot.
                 LoginAttempt::query()
@@ -207,23 +206,14 @@ final class LoginGuardService
                     ->update(['attempts' => 0, 'window_started_at' => $now]);
             }
 
-            /** @var LoginAttempt $row */
-            $row = LoginAttempt::query()->firstOrCreate(['ip' => $ip, 'email' => $email]);
+            $identity = ['ip' => $ip, 'email' => $email];
 
-            $key = $row->getKey();
-            $key = is_int($key) || is_string($key) ? $key : 0;
-
-            // Serialize concurrent failures for the same pair: whichever request
-            // locks the row first performs its rollover + increment before the
-            // next one reads the counter.
-            /** @var LoginAttempt|null $lockedRow */
-            $lockedRow = LoginAttempt::query()
-                ->whereKey($key)
-                ->lockForUpdate()
-                ->get()
-                ->first();
-
-            $row = $lockedRow ?? $row;
+            // On a concurrent first failure, createOrFirst's duplicate-key
+            // recovery must also use a locking read of the newly inserted row.
+            $pair = LoginAttempt::query();
+            $pair->where($identity)->lockForUpdate();
+            $row = (clone $pair)->first() ?? $pair->createOrFirst($identity);
+            $key = $row->id;
 
             // Fixed window: if the current window expired, restart it from zero. The
             // atomic UPDATE below then bumps the (possibly reset) counter by one.
@@ -250,10 +240,11 @@ final class LoginGuardService
             $lockScopes = [];
 
             if ($trackIp) {
-                $ipAttempts = filament_loginguard_intval(LoginAttempt::query()
-                    ->whereIn('ip', $ips)
-                    ->where('window_started_at', '>', $cutoff)
-                    ->sum('attempts'));
+                $ipAttempts = $this->attemptsInWindow(
+                    LoginAttempt::query()->toBase()->whereIn('ip', $ips),
+                    $cutoff,
+                    $useCurrentScopeReads,
+                );
 
                 if ($ipAttempts >= $maxAttempts) {
                     $lockScopes[] = [LoginGuardLock::SCOPE_IP, $ip];
@@ -261,10 +252,11 @@ final class LoginGuardService
             }
 
             if ($trackEmail) {
-                $emailAttempts = filament_loginguard_intval(LoginAttempt::query()
-                    ->where('email', $email)
-                    ->where('window_started_at', '>', $cutoff)
-                    ->sum('attempts'));
+                $emailAttempts = $this->attemptsInWindow(
+                    LoginAttempt::query()->toBase()->where('email', $email),
+                    $cutoff,
+                    $useCurrentScopeReads,
+                );
 
                 if ($emailAttempts >= $maxAttempts) {
                     $lockScopes[] = [LoginGuardLock::SCOPE_EMAIL, $email];
@@ -272,9 +264,11 @@ final class LoginGuardService
             }
 
             if (! $trackIp && ! $trackEmail) {
-                $attempts = filament_loginguard_intval(LoginAttempt::query()
-                    ->whereIn('ip', $ips)->where('email', $email)
-                    ->where('window_started_at', '>', $cutoff)->sum('attempts'));
+                $attempts = $this->attemptsInWindow(
+                    LoginAttempt::query()->toBase()->whereIn('ip', $ips)->where('email', $email),
+                    $cutoff,
+                    $useCurrentScopeReads,
+                );
 
                 if ($attempts >= $maxAttempts) {
                     $lockScopes[] = [LoginGuardLock::SCOPE_PAIR, $ip . '|' . $email];
@@ -285,19 +279,23 @@ final class LoginGuardService
                 return new LockoutResult(locked: false);
             }
 
-            // Apply the locks with escalation. Never shorten an existing lock; only
-            // escalate when the lock is actually (re)applied with a longer duration.
+            // An already-active lock belongs to an earlier attempt. Concurrent
+            // failures that passed the listener's pre-check cannot extend it.
             $locked = false;
             $lockoutRecords = [];
             $maxLockedUntil = null;
 
             foreach ($lockScopes as [$scopeType, $scopeKey]) {
-                /** @var LoginGuardLock|null $lock */
-                $lock = LoginGuardLock::query()
-                    ->where('scope_type', $scopeType)
+                $scopeLocks = LoginGuardLock::query();
+                $scopeLocks->where('scope_type', $scopeType)
                     ->whereIn('scope_key', $this->storedScopeKeys($scopeType, $scopeKey))
                     ->orderByDesc('locked_until')
-                    ->first();
+                    ->lockForUpdate();
+                $lock = $scopeLocks->first();
+
+                if ($lock !== null && $lock->locked_until->gt($now)) {
+                    continue;
+                }
 
                 // The escalation position is derived from the append-only history
                 // table, not from a deletable counter — the cleanup command must
@@ -308,18 +306,15 @@ final class LoginGuardService
                 //   PAIR scope → the exact (ip, email) pair only
                 // so pre-v0.6 history keeps counting towards the escalation
                 // ladder without any backfill or synthetic rows.
-                $newCount = filament_loginguard_intval(match ($scopeType) {
-                    LoginGuardLock::SCOPE_IP => LockoutHistory::query()
-                        ->whereIn('ip', $ips)
-                        ->max('lockout_count'),
-                    LoginGuardLock::SCOPE_EMAIL => LockoutHistory::query()
-                        ->where('email', $scopeKey)
-                        ->max('lockout_count'),
-                    default => LockoutHistory::query()
-                        ->whereIn('ip', $ips)
-                        ->where('email', $email)
-                        ->max('lockout_count'),
-                } ?? 0) + 1;
+                $history = match ($scopeType) {
+                    LoginGuardLock::SCOPE_IP => LockoutHistory::query()->whereIn('ip', $ips),
+                    LoginGuardLock::SCOPE_EMAIL => LockoutHistory::query()->where('email', $scopeKey),
+                    default => LockoutHistory::query()->whereIn('ip', $ips)->where('email', $email),
+                };
+                $newCount = filament_loginguard_intval($history
+                    ->orderByDesc('lockout_count')
+                    ->lockForUpdate()
+                    ->value('lockout_count')) + 1;
 
                 $durationMinutes = $this->durationForLockoutCount($newCount);
                 $lockedUntil = $now->copy()->addMinutes($durationMinutes);
@@ -328,10 +323,21 @@ final class LoginGuardService
                     continue;
                 }
 
-                LoginGuardLock::query()->updateOrCreate(
+                $values = ['locked_until' => $lockedUntil, 'escalation_count' => $newCount];
+                $canonicalScope = LoginGuardLock::query();
+                $canonicalScope->lockForUpdate();
+                $canonicalLock = $canonicalScope->firstOrCreate(
                     ['scope_type' => $scopeType, 'scope_key' => $scopeKey],
-                    ['locked_until' => $lockedUntil, 'escalation_count' => $newCount],
+                    $values,
                 );
+
+                if (! $canonicalLock->wasRecentlyCreated) {
+                    if ($canonicalLock->locked_until->gt($now) || $canonicalLock->locked_until->gte($lockedUntil)) {
+                        continue;
+                    }
+
+                    $canonicalLock->update($values);
+                }
 
                 $lockoutRecords[] = [
                     'scope_type' => $scopeType,
@@ -397,9 +403,22 @@ final class LoginGuardService
                 secondsRemaining: $seconds,
                 minutes: (int) ceil($seconds / 60),
             );
-        });
+        }, attempts: $useCurrentScopeReads ? 8 : 1);
 
         return $result;
+    }
+
+    private function attemptsInWindow(QueryBuilder $scope, Carbon $cutoff, bool $useCurrentRead): int
+    {
+        $scope->where('window_started_at', '>', $cutoff);
+
+        if ($useCurrentRead) {
+            // MySQL's ordinary reads can keep a snapshot from before another
+            // pair's update. The locking read uses the latest committed rows.
+            $scope->lockForUpdate();
+        }
+
+        return filament_loginguard_intval($scope->sum('attempts'));
     }
 
     /**

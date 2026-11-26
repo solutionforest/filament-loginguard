@@ -127,10 +127,12 @@ function runScenarios(string $directory): int
     $expiredPair = ['192.0.2.2', 'expired@example.test'];
     $ipPairs = [];
     $emailPairs = [];
+    $overThresholdPairs = [];
 
     for ($index = 1; $index <= WORKER_COUNT; $index++) {
         $ipPairs[] = ['192.0.2.3', "ip-{$index}@example.test"];
         $emailPairs[] = ["198.51.100.{$index}", 'shared-email@example.test'];
+        $overThresholdPairs[] = ['192.0.2.5', "overflow-{$index}@example.test"];
     }
 
     foreach ([
@@ -139,6 +141,7 @@ function runScenarios(string $directory): int
         'same-pair-expired-window' => [array_fill(0, WORKER_COUNT, $expiredPair), 20, 31, null, null],
         'same-ip-different-email' => [$ipPairs, WORKER_COUNT * 2, 0, LoginGuardLock::SCOPE_IP, '192.0.2.3'],
         'same-email-different-ip' => [$emailPairs, WORKER_COUNT * 2, 0, LoginGuardLock::SCOPE_EMAIL, 'shared-email@example.test'],
+        'same-ip-over-threshold' => [$overThresholdPairs, 4, null, LoginGuardLock::SCOPE_IP, '192.0.2.5'],
     ] as $scenario => [$pairs, $maxAttempts, $seedAgeMinutes, $lockScope, $lockKey]) {
         try {
             if ($seedAgeMinutes !== null) {
@@ -164,13 +167,16 @@ function runScenarios(string $directory): int
                     'A below-threshold pair should have no lockout history.',
                 );
             } else {
+                $expected = $seedAgeMinutes === null ? 1 : 2;
+
                 foreach ($pairs as [$ip, $email]) {
                     $record = LoginAttempt::query()->where('ip', $ip)->where('email', $email)->sole();
-                    requireCondition($record->attempts === 2, "Expected two attempts for [{$ip}, {$email}], found {$record->attempts}.");
+                    requireCondition($record->attempts === $expected, "Expected {$expected} attempts for [{$ip}, {$email}], found {$record->attempts}.");
                 }
 
                 $lock = LoginGuardLock::activeQuery()->where('scope_type', $lockScope)->where('scope_key', $lockKey)->first();
                 requireCondition($lock?->escalation_count === 1, "Expected the first aggregate lock on [{$lockScope}:{$lockKey}].");
+                requireCondition($lock->locked_until->equalTo(now()->addMinutes(15)), 'The first aggregate lock should keep its original expiry.');
                 requireCondition($confirmed === 1, "Expected exactly one new lockout, but {$confirmed} workers reported one.");
                 $historyColumn = $lockScope === LoginGuardLock::SCOPE_IP ? 'ip' : 'email';
                 requireCondition(LockoutHistory::query()->where($historyColumn, $lockKey)->count() === 1, 'Expected one lockout history entry.');

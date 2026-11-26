@@ -466,7 +466,7 @@ Every push runs the [compatibility suite](.github/workflows/tests.yml), [extende
 | --- | --- |
 | Pest | 250+ tests on PHP 8.3 and 8.4 × Laravel 12 and 13, Ubuntu and Windows, plus the oldest supported Filament, 5.8.3 |
 | Database integration | The complete Pest suite on strict MySQL 8.4, in addition to the SQLite compatibility matrix |
-| Concurrency | Eight independent PHP processes call the production login service together; checks exact counters, fixed-window rollover and IP/email aggregate lockouts on SQLite and MySQL |
+| Concurrency | Eight independent PHP processes call the production login service together; checks new-pair creation, exact counters, fixed-window rollover, IP/email aggregate lockouts and preservation of an active ban on SQLite and MySQL |
 | Browser | Chromium exercises login protection and the My Devices revocation flow against the Workbench application |
 | Coverage | PCOV line coverage with downloadable HTML, Clover and text reports; this measures executed code, not proof that every possible behaviour is tested |
 | PHPStan | Level 10, on `src`, `config` and `database` |

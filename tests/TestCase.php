@@ -24,6 +24,8 @@ use Pdo\Mysql;
 use RyanChandler\BladeCaptureDirective\BladeCaptureDirectiveServiceProvider;
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardServiceProvider;
 
+use function Orchestra\Testbench\load_migration_paths;
+
 class TestCase extends Orchestra
 {
     use LazilyRefreshDatabase;
@@ -118,10 +120,9 @@ class TestCase extends Orchestra
 
     protected function defineDatabaseMigrations(): void
     {
-        // The package service provider auto-loads the plugin migrations
-        // (runsMigrations), so nothing extra is registered here — except the
-        // `exports` table, which Filament ships as an app-level migration and
-        // which the CSV export feature writes to.
-        $this->loadMigrationsFrom(__DIR__ . '/Support/migrations');
+        // Register the test-only Filament tables with the lazy migrator. An
+        // eager Testbench migration rollback can reopen the transaction during
+        // teardown when a persistent test database is already migrated.
+        load_migration_paths($this->app, __DIR__ . '/Support/migrations');
     }
 }
