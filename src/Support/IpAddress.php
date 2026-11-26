@@ -57,7 +57,9 @@ final class IpAddress
             return self::normalize($ip);
         }
 
-        $forwarded = array_map('trim', explode(',', (string) $request->header('X-Forwarded-For', '')));
+        $header = $request->header('X-Forwarded-For', '');
+
+        $forwarded = is_string($header) ? array_map('trim', explode(',', $header)) : [];
 
         // Walk the chain right-to-left: entries right of the client were added by
         // proxies we control, so they can be trusted; the first untrusted entry
@@ -79,6 +81,9 @@ final class IpAddress
         return self::normalize($ip);
     }
 
+    /**
+     * @param  array<int, string>  $trusted
+     */
     private static function isTrusted(string $ip, array $trusted): bool
     {
         try {

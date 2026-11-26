@@ -14,7 +14,7 @@ final class DeviceCookie
 
     public static function name(): string
     {
-        return (string) config('filament-loginguard.devices.cookie.name', self::DEFAULT_NAME);
+        return filament_loginguard_config_string('filament-loginguard.devices.cookie.name', self::DEFAULT_NAME);
     }
 
     /**
@@ -41,13 +41,13 @@ final class DeviceCookie
         Cookie::queue(
             self::name(),
             $token,
-            (int) config('filament-loginguard.devices.cookie.lifetime_days', 365) * 24 * 60,
+            filament_loginguard_config_int('filament-loginguard.devices.cookie.lifetime_days', 365) * 24 * 60,
             '/',
             null,
             null, // secure follows the app's session/URL config
             true, // httpOnly
             false,
-            (string) config('filament-loginguard.devices.cookie.same_site', 'lax'),
+            filament_loginguard_config_string('filament-loginguard.devices.cookie.same_site', 'lax'),
         );
     }
 

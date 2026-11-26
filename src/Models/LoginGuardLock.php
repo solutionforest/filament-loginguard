@@ -57,9 +57,11 @@ class LoginGuardLock extends Model
     /**
      * Convenience for places where the dynamic scope call is not statically
      * resolvable: same constraint as scopeActive().
+     *
+     * @return Builder<static>
      */
     public static function activeQuery(): Builder
     {
-        return static::query()->where('locked_until', '>', now());
+        return self::query()->where('locked_until', '>', now());
     }
 }

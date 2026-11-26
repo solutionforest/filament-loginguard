@@ -23,7 +23,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $guard
  * @property string|null $device
  * @property Carbon $occurred_at
- * @property array|null $metadata
+ * @property array<string, mixed>|null $metadata
  * @property Carbon $created_at
  * @property Carbon $updated_at
  */
@@ -64,6 +64,8 @@ class SecurityEvent extends Model
     /**
      * Persist an event in one call; never throws — security logging must not
      * break the login flow.
+     *
+     * @param  array<string, mixed>|null  $metadata
      */
     public static function record(string $type, ?string $ip, ?string $email, ?int $userId = null, ?string $guard = null, ?string $device = null, ?array $metadata = null): void
     {

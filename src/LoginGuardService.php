@@ -48,7 +48,12 @@ final class LoginGuardService
             return false;
         }
 
-        return in_array($email, array_map('strtolower', (array) config('filament-loginguard.lockout.whitelist.emails', [])), true);
+        $whitelistedEmails = array_map(
+            static fn (mixed $entry): string => strtolower(is_string($entry) ? $entry : ''),
+            (array) config('filament-loginguard.lockout.whitelist.emails', []),
+        );
+
+        return in_array($email, $whitelistedEmails, true);
     }
 
     public function isLocked(string $ip, ?string $email): bool
@@ -62,9 +67,10 @@ final class LoginGuardService
 
     public function remainingLockSeconds(string $ip, ?string $email): int
     {
+        /** @var string|null $lockedUntil */
         $lockedUntil = $this->activeLocksQuery($ip, $email)->max('locked_until');
 
-        return $lockedUntil ? (int) now()->diffInSeconds($lockedUntil) : 0;
+        return $lockedUntil !== null ? (int) now()->diffInSeconds($lockedUntil) : 0;
     }
 
     /**
@@ -72,6 +78,7 @@ final class LoginGuardService
      */
     public function lockFor(string $ip, ?string $email): ?Carbon
     {
+        /** @var string|null $lockedUntil */
         $lockedUntil = $this->activeLocksQuery($ip, $email)->max('locked_until');
 
         return $lockedUntil !== null ? Carbon::parse($lockedUntil) : null;
@@ -144,10 +151,11 @@ final class LoginGuardService
      */
     public function recordFailure(string $ip, string $email, ?string $userAgent = null): LockoutResult
     {
-        return DB::transaction(function () use ($ip, $email, $userAgent): LockoutResult {
+        /** @var LockoutResult $result */
+        $result = DB::transaction(function () use ($ip, $email, $userAgent): LockoutResult {
             $now = Carbon::now();
-            $maxAttempts = (int) config('filament-loginguard.lockout.max_attempts', 10);
-            $windowMinutes = (int) config('filament-loginguard.lockout.attempts_window_minutes', 30);
+            $maxAttempts = filament_loginguard_config_int('filament-loginguard.lockout.max_attempts', 10);
+            $windowMinutes = filament_loginguard_config_int('filament-loginguard.lockout.attempts_window_minutes', 30);
             $windowSeconds = max(1, $windowMinutes) * 60;
             $trackIp = (bool) config('filament-loginguard.lockout.tracking.per_ip', true);
             $trackEmail = (bool) config('filament-loginguard.lockout.tracking.per_email', true);
@@ -155,16 +163,20 @@ final class LoginGuardService
             /** @var LoginAttempt $row */
             $row = LoginAttempt::query()->firstOrCreate(['ip' => $ip, 'email' => $email]);
 
+            $key = $row->getKey();
+            $key = is_int($key) || is_string($key) ? $key : 0;
+
             // Serialize concurrent failures for the same pair: whichever request
             // locks the row first performs its rollover + increment before the
             // next one reads the counter.
+            /** @var LoginAttempt|null $lockedRow */
             $lockedRow = LoginAttempt::query()
-                ->whereKey($row->getKey())
+                ->whereKey($key)
                 ->lockForUpdate()
                 ->get()
                 ->first();
 
-            $row = $lockedRow !== null ? $lockedRow : $row;
+            $row = $lockedRow ?? $row;
 
             // Fixed window: if the current window expired, restart it from zero. The
             // atomic UPDATE below then bumps the (possibly reset) counter by one.
@@ -173,19 +185,19 @@ final class LoginGuardService
 
             if ($windowExpired) {
                 LoginAttempt::query()
-                    ->whereKey($row->getKey())
+                    ->whereKey($key)
                     ->update(['attempts' => 0, 'window_started_at' => $now]);
             }
 
             $updatedRows = LoginAttempt::query()
-                ->whereKey($row->getKey())
+                ->whereKey($key)
                 ->update([
                     'attempts' => DB::raw('attempts + 1'),
                     'last_attempt_at' => $now,
                     'user_agent' => $userAgent === null ? null : Str::limit($userAgent, 255),
                 ]);
 
-            $row = LoginAttempt::query()->findOrFail($row->getKey());
+            $row = LoginAttempt::query()->findOrFail($key);
             $attempts = $updatedRows > 0 ? (int) $row->attempts : 1;
 
             $cutoff = $now->copy()->subSeconds($windowSeconds);
@@ -196,10 +208,10 @@ final class LoginGuardService
             $lockScopes = [];
 
             if ($trackIp) {
-                $ipAttempts = (int) LoginAttempt::query()
+                $ipAttempts = filament_loginguard_intval(LoginAttempt::query()
                     ->where('ip', $ip)
                     ->where('window_started_at', '>=', $cutoff)
-                    ->sum('attempts');
+                    ->sum('attempts'));
 
                 if ($ipAttempts >= $maxAttempts) {
                     $lockScopes[] = [LoginGuardLock::SCOPE_IP, $ip];
@@ -207,10 +219,10 @@ final class LoginGuardService
             }
 
             if ($trackEmail) {
-                $emailAttempts = (int) LoginAttempt::query()
+                $emailAttempts = filament_loginguard_intval(LoginAttempt::query()
                     ->where('email', $email)
                     ->where('window_started_at', '>=', $cutoff)
-                    ->sum('attempts');
+                    ->sum('attempts'));
 
                 if ($emailAttempts >= $maxAttempts) {
                     $lockScopes[] = [LoginGuardLock::SCOPE_EMAIL, $email];
@@ -251,7 +263,7 @@ final class LoginGuardService
                 //   PAIR scope → the exact (ip, email) pair only
                 // so pre-v0.6 history keeps counting towards the escalation
                 // ladder without any backfill or synthetic rows.
-                $newCount = (int) (match ($scopeType) {
+                $newCount = filament_loginguard_intval(match ($scopeType) {
                     LoginGuardLock::SCOPE_IP => LockoutHistory::query()
                         ->where('ip', $scopeKey)
                         ->max('lockout_count'),
@@ -341,6 +353,8 @@ final class LoginGuardService
                 minutes: (int) ceil($seconds / 60),
             );
         });
+
+        return $result;
     }
 
     /**
@@ -348,12 +362,13 @@ final class LoginGuardService
      */
     public function durationForLockoutCount(int $lockoutCount): int
     {
-        $baseMinutes = (int) config('filament-loginguard.lockout.initial_minutes', 15);
+        $baseMinutes = filament_loginguard_config_int('filament-loginguard.lockout.initial_minutes', 15);
 
         if ($lockoutCount <= 1) {
             return $baseMinutes;
         }
 
+        /** @var array<int, int> $escalationHours */
         $escalationHours = (array) config('filament-loginguard.lockout.escalation_hours', []);
 
         if ($escalationHours === []) {
@@ -454,7 +469,7 @@ final class LoginGuardService
      */
     public function enforceConcurrentLimit(int $userId): void
     {
-        $limit = (int) config('filament-loginguard.sessions.concurrent_limit', 0);
+        $limit = filament_loginguard_config_int('filament-loginguard.sessions.concurrent_limit', 0);
 
         if ($limit <= 0) {
             return;
@@ -492,8 +507,8 @@ final class LoginGuardService
 
         $notifiable = Notification::route('mail', $email);
 
-        if ($queue !== false) {
-            $notifiable->notify($notification->onQueue((string) $queue));
+        if (is_string($queue) && $queue !== '') {
+            $notifiable->notify($notification->onQueue($queue));
         } else {
             $notifiable->notifyNow($notification);
         }
@@ -530,7 +545,7 @@ final class LoginGuardService
             return false;
         }
 
-        $cooldownMinutes = (int) config('filament-loginguard.lockout.notifications.mail.cooldown_minutes', 60);
+        $cooldownMinutes = filament_loginguard_config_int('filament-loginguard.lockout.notifications.mail.cooldown_minutes', 60);
         $cacheKey = 'filament-loginguard:notified:' . $ip;
 
         if ($cooldownMinutes > 0 && cache()->has($cacheKey)) {
@@ -546,8 +561,8 @@ final class LoginGuardService
         foreach ($recipients as $recipient) {
             $notifiable = Notification::route('mail', $recipient);
 
-            if ($queue !== false) {
-                $notifiable->notify($notification->onQueue((string) $queue));
+            if (is_string($queue) && $queue !== '') {
+                $notifiable->notify($notification->onQueue($queue));
             } else {
                 $notifiable->notifyNow($notification);
             }
@@ -580,8 +595,8 @@ final class LoginGuardService
 
         $notifiable = Notification::route('mail', $email);
 
-        if ($queue !== false) {
-            $notifiable->notify($notification->onQueue((string) $queue));
+        if (is_string($queue) && $queue !== '') {
+            $notifiable->notify($notification->onQueue($queue));
         } else {
             $notifiable->notifyNow($notification);
         }
@@ -600,7 +615,7 @@ final class LoginGuardService
             return null;
         }
 
-        $ttlMinutes = max(1, (int) config('filament-loginguard.lockout.notifications.self_unlock.link_ttl_minutes', 60));
+        $ttlMinutes = max(1, filament_loginguard_config_int('filament-loginguard.lockout.notifications.self_unlock.link_ttl_minutes', 60));
         $token = Str::random(40);
 
         // The opaque token maps back to the locked email inside the TTL window.
@@ -638,7 +653,7 @@ final class LoginGuardService
 
     public function selfUnlockTtlSeconds(): int
     {
-        return max(1, (int) config('filament-loginguard.lockout.notifications.self_unlock.link_ttl_minutes', 60)) * 60;
+        return max(1, filament_loginguard_config_int('filament-loginguard.lockout.notifications.self_unlock.link_ttl_minutes', 60)) * 60;
     }
 
     /**
@@ -668,10 +683,10 @@ final class LoginGuardService
      */
     public function releaseLock(string $scopeType, string $scopeKey, string $reason = 'admin_unblock'): int
     {
-        $released = LoginGuardLock::query()
+        $released = filament_loginguard_intval(LoginGuardLock::query()
             ->where('scope_type', $scopeType)
             ->where('scope_key', $scopeKey)
-            ->delete();
+            ->delete());
 
         if ($released > 0) {
             SecurityEvent::record(SecurityEvent::TYPE_UNLOCKED, null, null, null, null, null, [

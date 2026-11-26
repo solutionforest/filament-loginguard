@@ -15,6 +15,7 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Routing\Router;
 use Livewire\Features\SupportTesting\Testable;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupAttemptsCommand;
 use SolutionForest\FilamentLoginGuard\Commands\CleanupDevicesCommand;
@@ -76,7 +77,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
 
             Filament::getCurrentPanel()?->userMenuItems([
                 MenuItem::make()
-                    ->label(__('filament-loginguard::loginguard.my_devices.title'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.title'))
                     ->icon(Heroicon::DevicePhoneMobile)
                     ->url(MyDevices::getUrl())
                     ->sort(2),
@@ -85,6 +86,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
 
         // Self-service unlock routes (signed, single-use link from the lockout
         // email): GET shows a confirmation page, POST performs the unlock.
+        /** @var Router $router */
         $router = $this->app->make('router');
         $controller = SelfUnlockController::class;
 
@@ -142,7 +144,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             if ((bool) config('filament-loginguard.maintenance.cleanup_attempts.enabled', false)) {
                 $schedule->command('filament-loginguard:cleanup-attempts')
-                    ->cron((string) config('filament-loginguard.maintenance.cleanup_attempts.expression', '0 0 * * *'))
+                    ->cron(filament_loginguard_config_string('filament-loginguard.maintenance.cleanup_attempts.expression', '0 0 * * *'))
                     ->withoutOverlapping();
             }
 
@@ -151,13 +153,13 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
                 && config('session.driver') === 'database'
             ) {
                 $schedule->command('filament-loginguard:cleanup-sessions')
-                    ->cron((string) config('filament-loginguard.maintenance.cleanup_sessions.expression', '0 * * * *'))
+                    ->cron(filament_loginguard_config_string('filament-loginguard.maintenance.cleanup_sessions.expression', '0 * * * *'))
                     ->withoutOverlapping();
             }
         });
     }
 
-    protected function getAssetPackageName(): ?string
+    protected function getAssetPackageName(): string
     {
         return 'solution-forest/filament-loginguard';
     }
@@ -186,7 +188,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
     }
 
     /**
-     * @return array<string>
+     * @return array<string, string>
      */
     protected function getIcons(): array
     {

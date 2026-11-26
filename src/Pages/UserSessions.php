@@ -13,6 +13,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Schema;
 use SolutionForest\FilamentLoginGuard\Filament\Exports\UserSessionExporter;
@@ -41,7 +42,7 @@ class UserSessions extends Page implements HasTable
 
     public static function getDefaultSlug(): string
     {
-        return (string) (config('filament-loginguard.pages.sessions.slug') ?: 'user-sessions');
+        return filament_loginguard_config_string('filament-loginguard.pages.sessions.slug', 'user-sessions');
     }
 
     public static function getCluster(): ?string
@@ -53,14 +54,15 @@ class UserSessions extends Page implements HasTable
 
     public static function getNavigationLabel(): string
     {
-        return (string) (config('filament-loginguard.pages.sessions.navigation_label')
-            ?: __('filament-loginguard::loginguard.sessions.navigation_label'));
+        return filament_loginguard_config_string(
+            'filament-loginguard.pages.sessions.navigation_label',
+            filament_loginguard_trans('filament-loginguard::loginguard.sessions.navigation_label'),
+        );
     }
 
     public static function getNavigationIcon(): string
     {
-        return (string) (config('filament-loginguard.pages.sessions.navigation_icon')
-            ?: 'heroicon-o-computer-desktop');
+        return filament_loginguard_config_string('filament-loginguard.pages.sessions.navigation_icon', 'heroicon-o-computer-desktop');
     }
 
     public static function getNavigationGroup(): ?string
@@ -79,40 +81,43 @@ class UserSessions extends Page implements HasTable
 
     public function getTitle(): string
     {
-        return __('filament-loginguard::loginguard.sessions.title');
+        return filament_loginguard_trans('filament-loginguard::loginguard.sessions.title');
     }
 
     public function getHeading(): string
     {
-        return __('filament-loginguard::loginguard.sessions.heading');
+        return filament_loginguard_trans('filament-loginguard::loginguard.sessions.heading');
     }
 
     public function table(Table $table): Table
     {
+        /** @var Builder<UserSession> $query */
+        $query = UserSession::query()->whereNotNull('user_id');
+
         return $table
-            ->query(UserSession::query()->whereNotNull('user_id'))
+            ->query($query)
             ->defaultSort('last_activity', 'desc')
             ->columns([
                 TextColumn::make('user_email')
-                    ->label(__('filament-loginguard::loginguard.sessions.table.columns.user'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.sessions.table.columns.user'))
                     ->placeholder('-'),
                 TextColumn::make('ip_address')
-                    ->label(__('filament-loginguard::loginguard.sessions.table.columns.ip'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.sessions.table.columns.ip'))
                     ->placeholder('-')
                     ->searchable(),
                 TextColumn::make('device_name')
-                    ->label(__('filament-loginguard::loginguard.sessions.table.columns.device'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.sessions.table.columns.device'))
                     ->placeholder('-')
                     ->tooltip(fn (UserSession $record): ?string => $record->user_agent),
                 TextColumn::make('last_activity')
-                    ->label(__('filament-loginguard::loginguard.sessions.table.columns.last_active'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.sessions.table.columns.last_active'))
                     ->state(fn (UserSession $record): string => $record->last_active_label)
                     ->badge()
                     ->color(fn (UserSession $record): string => $record->is_online ? 'success' : 'gray'),
                 TextColumn::make('is_new_device')
-                    ->label(__('filament-loginguard::loginguard.sessions.table.new_device'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.sessions.table.new_device'))
                     ->state(fn (UserSession $record): ?string => $record->is_new_device
-                        ? __('filament-loginguard::loginguard.sessions.table.new')
+                        ? filament_loginguard_trans('filament-loginguard::loginguard.sessions.table.new')
                         : null)
                     ->badge()
                     ->placeholder('-')
@@ -120,7 +125,7 @@ class UserSessions extends Page implements HasTable
             ])
             ->recordActions([
                 Action::make('revoke')
-                    ->label(__('filament-loginguard::loginguard.sessions.table.actions.revoke'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.sessions.table.actions.revoke'))
                     ->icon('heroicon-o-x-mark')
                     ->color('danger')
                     ->requiresConfirmation()
@@ -130,24 +135,28 @@ class UserSessions extends Page implements HasTable
                         $record->delete();
 
                         Notification::make()
-                            ->title(__('filament-loginguard::loginguard.sessions.table.actions.revoked'))
+                            ->title(filament_loginguard_trans('filament-loginguard::loginguard.sessions.table.actions.revoked'))
                             ->success()
                             ->send();
                     }),
             ])
             ->bulkActions([
                 BulkAction::make('revokeMany')
-                    ->label(__('filament-loginguard::loginguard.sessions.table.actions.revoke_many'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.sessions.table.actions.revoke_many'))
                     ->icon('heroicon-o-x-mark')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->visible(fn (): bool => AuthorizesPages::canRevokeSessions())
                     ->action(function (Collection $records): void {
+                        /** @var Collection<int, UserSession> $records */
+
                         // Never revoke the session performing the request — the
                         // admin would log themselves out mid-action.
                         $records
                             ->reject(fn (UserSession $record): bool => $record->id === session()->getId())
-                            ->each(fn (UserSession $record) => $record->delete());
+                            ->each(function (UserSession $record): void {
+                                $record->delete();
+                            });
                     }),
             ]);
     }
@@ -163,7 +172,7 @@ class UserSessions extends Page implements HasTable
 
         return [
             ExportAction::make()
-                ->label(__('filament-loginguard::loginguard.export.action'))
+                ->label(filament_loginguard_trans('filament-loginguard::loginguard.export.action'))
                 ->exporter(UserSessionExporter::class),
         ];
     }
@@ -171,6 +180,6 @@ class UserSessions extends Page implements HasTable
     protected static function isEnabled(): bool
     {
         return (bool) config('filament-loginguard.pages.sessions.enabled', true)
-            && Schema::hasTable((string) config('filament-loginguard.sessions.table', 'sessions'));
+            && Schema::hasTable(filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions'));
     }
 }

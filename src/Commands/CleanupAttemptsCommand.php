@@ -4,6 +4,7 @@ namespace SolutionForest\FilamentLoginGuard\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 
@@ -18,13 +19,13 @@ class CleanupAttemptsCommand extends Command
         $query = LoginAttempt::query();
 
         if ($this->option('all')) {
-            $deleted = $query->delete();
+            $deleted = filament_loginguard_intval($query->delete());
             $this->info("Deleted {$deleted} rows.");
 
             return self::SUCCESS;
         }
 
-        $windowMinutes = (int) config('filament-loginguard.lockout.attempts_window_minutes', 30);
+        $windowMinutes = filament_loginguard_config_int('filament-loginguard.lockout.attempts_window_minutes', 30);
 
         // The pair scope key is built with the concat operator native to the
         // current connection (`||` is not string concatenation on MySQL).
@@ -41,25 +42,25 @@ class CleanupAttemptsCommand extends Command
                 $query->whereNull('locked_until')->orWhere('locked_until', '<', now());
             })
             ->whereNotExists(function (\Illuminate\Database\Query\Builder $sub): void {
-                $sub->selectRaw(1)
+                $sub->selectRaw('1')
                     ->from('filament_loginguard_locks')
                     ->whereColumn('scope_key', 'filament_loginguard_attempts.ip')
                     ->where('scope_type', 'ip')
                     ->where('locked_until', '>', now());
             })
             ->whereNotExists(function (\Illuminate\Database\Query\Builder $sub): void {
-                $sub->selectRaw(1)
+                $sub->selectRaw('1')
                     ->from('filament_loginguard_locks')
                     ->whereColumn('scope_key', 'filament_loginguard_attempts.email')
                     ->where('scope_type', 'email')
                     ->where('locked_until', '>', now());
             })
             ->whereNotExists(function (\Illuminate\Database\Query\Builder $sub) use ($pairKey): void {
-                $sub->selectRaw(1)
+                $sub->selectRaw('1')
                     ->from('filament_loginguard_locks')
                     ->where('scope_type', 'pair')
                     ->where('locked_until', '>', now())
-                    ->whereRaw('scope_key = ' . $pairKey);
+                    ->whereRaw(DB::raw('scope_key = ' . $pairKey));
             })
             ->delete();
 

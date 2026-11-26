@@ -40,7 +40,7 @@ class UserSession extends Model
 
     public function __construct(array $attributes = [])
     {
-        $this->table = (string) config('filament-loginguard.sessions.table', 'sessions');
+        $this->table = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
 
         parent::__construct($attributes);
     }
@@ -57,17 +57,26 @@ class UserSession extends Model
             return null;
         }
 
-        return $model::query()->find($this->user_id)?->email;
+        /** @var class-string<Model> $model */
+        $user = $model::query()->find($this->user_id);
+
+        if ($user === null) {
+            return null;
+        }
+
+        $email = $user->getAttribute('email');
+
+        return is_string($email) && filled($email) ? $email : null;
     }
 
     public function getLastActiveAtAttribute(): Carbon
     {
-        return Carbon::createFromTimestamp((int) ($this->attributes['last_activity'] ?? 0));
+        return Carbon::createFromTimestamp(filament_loginguard_intval($this->attributes['last_activity'] ?? 0));
     }
 
     public function getIsOnlineAttribute(): bool
     {
-        $threshold = (int) config('filament-loginguard.sessions.online_threshold_seconds', 60);
+        $threshold = filament_loginguard_config_int('filament-loginguard.sessions.online_threshold_seconds', 60);
 
         return $this->last_active_at->gte(now()->subSeconds($threshold));
     }
@@ -75,7 +84,7 @@ class UserSession extends Model
     public function getLastActiveLabelAttribute(): string
     {
         return $this->is_online
-            ? (string) __('filament-loginguard::loginguard.sessions.table.online_now')
+            ? (string) filament_loginguard_trans('filament-loginguard::loginguard.sessions.table.online_now')
             : $this->last_active_at->diffForHumans();
     }
 
@@ -95,7 +104,7 @@ class UserSession extends Model
             return false;
         }
 
-        $windowHours = (int) config('filament-loginguard.sessions.new_device.window_hours', 24);
+        $windowHours = filament_loginguard_config_int('filament-loginguard.sessions.new_device.window_hours', 24);
 
         return KnownDevice::query()
             ->where('user_id', $this->user_id)

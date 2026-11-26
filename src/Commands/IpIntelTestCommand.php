@@ -14,7 +14,9 @@ class IpIntelTestCommand extends Command
 
     public function handle(): int
     {
-        $ip = IpAddress::normalize((string) ($this->argument('ip') ?? '8.8.8.8'));
+        $argument = $this->argument('ip');
+
+        $ip = IpAddress::normalize(is_string($argument) ? $argument : '8.8.8.8');
 
         $this->line('IP intelligence (GeoIP) diagnostics');
 

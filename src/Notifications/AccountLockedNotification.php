@@ -29,15 +29,15 @@ class AccountLockedNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject(__('filament-loginguard::loginguard.notifications.lockout.subject'))
-            ->greeting(__('filament-loginguard::loginguard.notifications.lockout.greeting'))
-            ->line(__('filament-loginguard::loginguard.notifications.lockout.ip', ['ip' => $this->ip]))
-            ->line(__('filament-loginguard::loginguard.notifications.lockout.email', ['email' => $this->email]))
-            ->line(__('filament-loginguard::loginguard.notifications.lockout.duration', ['minutes' => $this->minutes]));
+            ->subject(filament_loginguard_trans('filament-loginguard::loginguard.notifications.lockout.subject'))
+            ->greeting(filament_loginguard_trans('filament-loginguard::loginguard.notifications.lockout.greeting'))
+            ->line(filament_loginguard_trans('filament-loginguard::loginguard.notifications.lockout.ip', ['ip' => $this->ip]))
+            ->line(filament_loginguard_trans('filament-loginguard::loginguard.notifications.lockout.email', ['email' => $this->email]))
+            ->line(filament_loginguard_trans('filament-loginguard::loginguard.notifications.lockout.duration', ['minutes' => $this->minutes]));
 
         if ($this->unlockUrl !== null) {
-            $mail->line(__('filament-loginguard::loginguard.notifications.lockout.unlock_intro'))
-                ->action(__('filament-loginguard::loginguard.notifications.lockout.unlock_action'), $this->unlockUrl);
+            $mail->line(filament_loginguard_trans('filament-loginguard::loginguard.notifications.lockout.unlock_intro'))
+                ->action(filament_loginguard_trans('filament-loginguard::loginguard.notifications.lockout.unlock_action'), $this->unlockUrl);
         }
 
         return $mail;

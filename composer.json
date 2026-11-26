@@ -55,7 +55,10 @@
         "psr-4": {
             "SolutionForest\\FilamentLoginGuard\\": "src/",
             "SolutionForest\\FilamentLoginGuard\\Database\\Factories\\": "database/factories/"
-        }
+        },
+        "files": [
+            "src/Support/helpers.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {

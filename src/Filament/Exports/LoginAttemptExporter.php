@@ -41,7 +41,7 @@ class LoginAttemptExporter extends Exporter
 
     public function getFileName(Export $export): string
     {
-        return "login-attempts-{$export->getKey()}.csv";
+        return 'login-attempts-' . filament_loginguard_identifier($export->getKey()) . '.csv';
     }
 
     public static function getCompletedNotificationBody(Export $export): string
@@ -49,10 +49,10 @@ class LoginAttemptExporter extends Exporter
         $successful = number_format($export->successful_rows);
         $failed = $export->getFailedRowsCount();
 
-        $body = __('filament-loginguard::loginguard.export.completed', ['count' => $successful]);
+        $body = filament_loginguard_trans('filament-loginguard::loginguard.export.completed', ['count' => $successful]);
 
         if ($failed > 0) {
-            $body .= ' ' . __('filament-loginguard::loginguard.export.failed', ['count' => number_format($failed)]);
+            $body .= ' ' . filament_loginguard_trans('filament-loginguard::loginguard.export.failed', ['count' => number_format($failed)]);
         }
 
         return $body;

@@ -16,17 +16,17 @@ class CleanupSessionsCommand extends Command
         $query = UserSession::query();
 
         if ($this->option('all')) {
-            $deleted = $query->delete();
+            $deleted = filament_loginguard_intval($query->delete());
             $this->info("Deleted {$deleted} rows.");
 
             return self::SUCCESS;
         }
 
-        $lifetimeMinutes = (int) config('session.lifetime', 120);
+        $lifetimeMinutes = filament_loginguard_config_int('session.lifetime', 120);
 
-        $deleted = $query
+        $deleted = filament_loginguard_intval($query
             ->where('last_activity', '<', now()->subMinutes($lifetimeMinutes)->timestamp)
-            ->delete();
+            ->delete());
 
         $this->info("Deleted {$deleted} expired rows.");
 

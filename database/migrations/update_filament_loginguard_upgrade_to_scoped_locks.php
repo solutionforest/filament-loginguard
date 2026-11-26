@@ -48,6 +48,7 @@ return new class extends Migration
             ->get(['ip', 'email', 'locked_until', 'lockout_count']);
 
         foreach ($legacyLocks as $legacy) {
+            /** @var object{ip: string, email: string|null, locked_until: string, lockout_count: int} $legacy */
             $expires = Carbon::parse($legacy->locked_until);
             $escalation = max(0, (int) $legacy->lockout_count);
 
@@ -65,6 +66,7 @@ return new class extends Migration
      */
     private function upsertLegacyScope(string $scopeType, string $scopeKey, Carbon $expires, int $escalation): void
     {
+        /** @var object{id: int, locked_until: string, escalation_count: int}|null $existing */
         $existing = DB::table('filament_loginguard_locks')
             ->where('scope_type', $scopeType)
             ->where('scope_key', $scopeKey)

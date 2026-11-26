@@ -13,7 +13,7 @@ class TopSourceIpsChart extends ChartWidget
 
     public function getHeading(): string
     {
-        return (string) __('filament-loginguard::loginguard.charts.top_ips.heading');
+        return (string) filament_loginguard_trans('filament-loginguard::loginguard.charts.top_ips.heading');
     }
 
     protected function getType(): string
@@ -41,7 +41,7 @@ class TopSourceIpsChart extends ChartWidget
         return [
             'datasets' => [
                 [
-                    'label' => (string) __('filament-loginguard::loginguard.charts.top_ips.dataset'),
+                    'label' => (string) filament_loginguard_trans('filament-loginguard::loginguard.charts.top_ips.dataset'),
                     'data' => $top->pluck('aggregate')->all(),
                     'backgroundColor' => '#3b82f6',
                     'borderRadius' => 4,

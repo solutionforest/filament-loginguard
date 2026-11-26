@@ -16,6 +16,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use SolutionForest\FilamentLoginGuard\Filament\Exports\LoginAttemptExporter;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
@@ -51,7 +52,7 @@ class LoginGuard extends Page implements HasTable
 
     public static function getDefaultSlug(): string
     {
-        return (string) (config('filament-loginguard.pages.attempts.slug') ?: 'login-guard');
+        return filament_loginguard_config_string('filament-loginguard.pages.attempts.slug', 'login-guard');
     }
 
     public static function getCluster(): ?string
@@ -63,14 +64,15 @@ class LoginGuard extends Page implements HasTable
 
     public static function getNavigationLabel(): string
     {
-        return (string) (config('filament-loginguard.pages.attempts.navigation_label')
-            ?: __('filament-loginguard::loginguard.page.navigation_label'));
+        return filament_loginguard_config_string(
+            'filament-loginguard.pages.attempts.navigation_label',
+            filament_loginguard_trans('filament-loginguard::loginguard.page.navigation_label'),
+        );
     }
 
     public static function getNavigationIcon(): string
     {
-        return (string) (config('filament-loginguard.pages.attempts.navigation_icon')
-            ?: 'heroicon-o-shield-exclamation');
+        return filament_loginguard_config_string('filament-loginguard.pages.attempts.navigation_icon', 'heroicon-o-shield-exclamation');
     }
 
     public static function getNavigationGroup(): ?string
@@ -89,12 +91,12 @@ class LoginGuard extends Page implements HasTable
 
     public function getTitle(): string
     {
-        return __('filament-loginguard::loginguard.page.title');
+        return filament_loginguard_trans('filament-loginguard::loginguard.page.title');
     }
 
     public function getHeading(): string
     {
-        return __('filament-loginguard::loginguard.page.heading');
+        return filament_loginguard_trans('filament-loginguard::loginguard.page.heading');
     }
 
     /**
@@ -124,49 +126,59 @@ class LoginGuard extends Page implements HasTable
             ->defaultSort('last_attempt_at', 'desc')
             ->columns([
                 TextColumn::make('ip')
-                    ->label(__('filament-loginguard::loginguard.page.table.columns.ip'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.columns.ip'))
                     ->searchable(),
                 TextColumn::make('country')
-                    ->label(__('filament-loginguard::loginguard.page.table.columns.country'))
-                    ->state(fn (LoginAttempt $record): ?string => $record->latestLocatedEvent?->metadata['country'] ?? null)
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.columns.country'))
+                    ->state(function (LoginAttempt $record): ?string {
+                        $event = $record->latestLocatedEvent;
+
+                        if ($event === null || $event->metadata === null) {
+                            return null;
+                        }
+
+                        $country = $event->metadata['country'] ?? null;
+
+                        return is_string($country) && $country !== '' ? $country : null;
+                    })
                     ->badge()
                     ->placeholder('-')
                     ->toggleable(),
                 TextColumn::make('email')
-                    ->label(__('filament-loginguard::loginguard.page.table.columns.email'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.columns.email'))
                     ->searchable(),
                 TextColumn::make('device_name')
-                    ->label(__('filament-loginguard::loginguard.page.table.columns.user_agent'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.columns.user_agent'))
                     ->placeholder('-')
                     ->tooltip(fn (LoginAttempt $record): ?string => $record->user_agent),
                 TextColumn::make('attempts')
-                    ->label(__('filament-loginguard::loginguard.page.table.columns.attempts'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.columns.attempts'))
                     ->badge(),
                 TextColumn::make('lockout_count')
-                    ->label(__('filament-loginguard::loginguard.page.table.columns.lockout_count'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.columns.lockout_count'))
                     ->badge()
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('locked_until')
-                    ->label(__('filament-loginguard::loginguard.page.table.columns.locked_until'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.columns.locked_until'))
                     ->state(fn (LoginAttempt $record): ?string => app(LoginGuardService::class)->lockFor($record->ip, $record->email)?->diffForHumans())
                     ->badge()
                     ->placeholder('-')
                     ->color(fn (LoginAttempt $record): string => app(LoginGuardService::class)->isLocked($record->ip, $record->email) ? 'danger' : 'gray'),
                 TextColumn::make('last_attempt_at')
-                    ->label(__('filament-loginguard::loginguard.page.table.columns.last_attempt_at'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.columns.last_attempt_at'))
                     ->state(fn (LoginAttempt $record): ?string => $record->last_attempt_at?->diffForHumans())
                     ->badge()
                     ->placeholder('-')
                     ->color('gray')
                     ->tooltip(fn (LoginAttempt $record): ?string => $record->last_attempt_at?->toDateTimeString()),
                 TextColumn::make('success_count')
-                    ->label(__('filament-loginguard::loginguard.page.table.columns.success_count'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.columns.success_count'))
                     ->state(fn (LoginAttempt $record): ?int => $record->success_count > 0 ? $record->success_count : null)
                     ->badge()
                     ->placeholder('-')
                     ->color('success'),
                 TextColumn::make('last_success_at')
-                    ->label(__('filament-loginguard::loginguard.page.table.columns.last_success_at'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.columns.last_success_at'))
                     ->state(fn (LoginAttempt $record): ?string => $record->last_success_at?->diffForHumans())
                     ->placeholder('-')
                     ->toggleable(isToggledHiddenByDefault: true)
@@ -174,10 +186,10 @@ class LoginGuard extends Page implements HasTable
             ])
             ->filters([
                 SelectFilter::make('status')
-                    ->label(__('filament-loginguard::loginguard.page.table.filters.status'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.filters.status'))
                     ->options([
-                        'locked' => __('filament-loginguard::loginguard.page.table.filters.locked'),
-                        'tracked' => __('filament-loginguard::loginguard.page.table.filters.tracked'),
+                        'locked' => filament_loginguard_trans('filament-loginguard::loginguard.page.table.filters.locked'),
+                        'tracked' => filament_loginguard_trans('filament-loginguard::loginguard.page.table.filters.tracked'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return match ($data['value']) {
@@ -185,24 +197,24 @@ class LoginGuard extends Page implements HasTable
                                 // Blocked by the row's IP lock, its email lock,
                                 // or the exact-pair lock (per-pair tracking mode).
                                 $q->whereExists(function (\Illuminate\Database\Query\Builder $sub): void {
-                                    $sub->selectRaw(1)
+                                    $sub->selectRaw('1')
                                         ->from('filament_loginguard_locks')
                                         ->whereColumn('scope_key', 'filament_loginguard_attempts.ip')
                                         ->where('scope_type', 'ip')
                                         ->where('locked_until', '>', now());
                                 })->orWhereExists(function (\Illuminate\Database\Query\Builder $sub): void {
-                                    $sub->selectRaw(1)
+                                    $sub->selectRaw('1')
                                         ->from('filament_loginguard_locks')
                                         ->whereColumn('scope_key', 'filament_loginguard_attempts.email')
                                         ->where('scope_type', 'email')
                                         ->where('locked_until', '>', now());
                                 })->orWhereExists(function (\Illuminate\Database\Query\Builder $sub): void {
-                                    $sub->selectRaw(1)
+                                    $sub->selectRaw('1')
                                         ->from('filament_loginguard_locks')
                                         ->where('scope_type', 'pair')
                                         ->where('locked_until', '>', now())
                                         ->whereRaw(
-                                            'scope_key = ' . app(LoginGuardService::class)->pairScopeExpression('filament_loginguard_attempts.ip', 'filament_loginguard_attempts.email'),
+                                            DB::raw('scope_key = ' . app(LoginGuardService::class)->pairScopeExpression('filament_loginguard_attempts.ip', 'filament_loginguard_attempts.email')),
                                         );
                                 });
                             }),
@@ -213,7 +225,7 @@ class LoginGuard extends Page implements HasTable
             ])
             ->recordActions([
                 Action::make('unblock')
-                    ->label(__('filament-loginguard::loginguard.page.table.actions.unblock'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.actions.unblock'))
                     ->icon('heroicon-o-lock-open')
                     ->color('success')
                     ->requiresConfirmation()
@@ -227,22 +239,25 @@ class LoginGuard extends Page implements HasTable
                         app(LoginGuardService::class)->releaseLocksForPair($record->ip, $record->email);
 
                         Notification::make()
-                            ->title(__('filament-loginguard::loginguard.page.table.actions.unblocked'))
+                            ->title(filament_loginguard_trans('filament-loginguard::loginguard.page.table.actions.unblocked'))
                             ->success()
                             ->send();
                     }),
             ])
             ->bulkActions([
                 BulkAction::make('unblockMany')
-                    ->label(__('filament-loginguard::loginguard.page.table.actions.unblock_many'))
+                    ->label(filament_loginguard_trans('filament-loginguard::loginguard.page.table.actions.unblock_many'))
                     ->icon('heroicon-o-lock-open')
                     ->color('success')
                     ->requiresConfirmation()
                     ->visible(fn (): bool => AuthorizesPages::canUnblockAttempts())
                     ->action(function (Collection $records): Collection {
+                        /** @var Collection<int, LoginAttempt> $records */
                         $service = app(LoginGuardService::class);
 
-                        $records->each(fn (LoginAttempt $record) => $service->releaseLocksForPair($record->ip, $record->email));
+                        $records->each(function (LoginAttempt $record) use ($service): void {
+                            $service->releaseLocksForPair($record->ip, $record->email);
+                        });
 
                         return $records;
                     }),
@@ -260,7 +275,7 @@ class LoginGuard extends Page implements HasTable
 
         return [
             ExportAction::make()
-                ->label(__('filament-loginguard::loginguard.export.action'))
+                ->label(filament_loginguard_trans('filament-loginguard::loginguard.export.action'))
                 ->exporter(LoginAttemptExporter::class),
         ];
     }

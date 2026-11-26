@@ -13,6 +13,8 @@ use SolutionForest\FilamentLoginGuard\Support\IpAddress;
  * `geoip2/geoip2` package is a suggested dependency: when it is absent, or
  * when the feature / databases are not configured, lookup() degrades to null
  * and never affects the login flow.
+ *
+ * @phpstan-type IpData array{country: string|null, country_name: string|null, city: string|null, subdivision: string|null, latitude: float|null, longitude: float|null, accuracy_radius_km: int|null, asn: int|null, asn_organization: string|null}
  */
 class MaxmindIpIntelligence implements IpIntelligence
 {
@@ -31,6 +33,7 @@ class MaxmindIpIntelligence implements IpIntelligence
             return null;
         }
 
+        /** @var IpData $data */
         $data = [
             'country' => null,
             'country_name' => null,
@@ -67,7 +70,7 @@ class MaxmindIpIntelligence implements IpIntelligence
     /**
      * Fill country + city + coordinates from the GeoLite2-City database.
      *
-     * @param  array<string, string|int|float|null>  $data
+     * @param  IpData  $data
      */
     private function hydrateCity(string $ip, array &$data): bool
     {
@@ -99,7 +102,7 @@ class MaxmindIpIntelligence implements IpIntelligence
     /**
      * Fill country from the GeoLite2-Country database (used when City is absent).
      *
-     * @param  array<string, string|int|float|null>  $data
+     * @param  IpData  $data
      */
     private function hydrateCountry(string $ip, array &$data): bool
     {
@@ -124,7 +127,7 @@ class MaxmindIpIntelligence implements IpIntelligence
     /**
      * Fill ASN from the GeoLite2-ASN database.
      *
-     * @param  array<string, string|int|float|null>  $data
+     * @param  IpData  $data
      */
     private function hydrateAsn(string $ip, array &$data): bool
     {

@@ -8,7 +8,7 @@
 ![PHP 8.3 | 8.4](https://img.shields.io/badge/PHP-8.3%20%7C%208.4-777bb4?logo=php&logoColor=white)
 ![Laravel 12 | 13](https://img.shields.io/badge/Laravel-12%20%7C%2013-ff2d20?logo=laravel&logoColor=white)
 ![Filament 5](https://img.shields.io/badge/Filament-5-f59e0b)
-![PHPStan level 4](https://img.shields.io/badge/PHPStan-level%204-2a5ea7)
+![PHPStan level 10](https://img.shields.io/badge/PHPStan-level%2010-2a5ea7)
 ![License MIT](https://img.shields.io/badge/license-MIT-blue)
 
 **Enterprise-grade login security for Filament and Laravel.**
@@ -461,7 +461,7 @@ Every push runs [`tests.yml`](.github/workflows/tests.yml):
 | Check | What it covers |
 | --- | --- |
 | Pest | 200+ tests on PHP 8.3 and 8.4 × Laravel 12 and 13 with Filament 5, and on the oldest supported Filament, 5.8.3 |
-| PHPStan | Level 4, on `src`, `config` and `database` |
+| PHPStan | Level 10, on `src`, `config` and `database` |
 | Pint | Laravel's code style |
 
 To run them yourself:

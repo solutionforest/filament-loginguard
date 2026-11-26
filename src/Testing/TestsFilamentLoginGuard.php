@@ -5,22 +5,23 @@ namespace SolutionForest\FilamentLoginGuard\Testing;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Testing\Assert;
+use Livewire\Component;
 use Livewire\Features\SupportTesting\Testable;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
 
 /**
- * @mixin Testable
+ * @mixin Testable<Component>
  */
 class TestsFilamentLoginGuard
 {
     public function assertLoginGuardAttempts(): Closure
     {
         return function (int $expected, string $email, ?string $ip = null): static {
-            $attempts = (int) LoginAttempt::query()
+            $attempts = filament_loginguard_intval(LoginAttempt::query()
                 ->where('email', $email)
                 ->when($ip !== null, fn (Builder $query): Builder => $query->where('ip', $ip))
-                ->sum('attempts');
+                ->sum('attempts'));
 
             Assert::assertSame(
                 $expected,

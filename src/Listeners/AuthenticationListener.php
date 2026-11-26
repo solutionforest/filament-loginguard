@@ -128,7 +128,7 @@ class AuthenticationListener
 
         if ($location !== null) {
             $userType = $event->user::class;
-            $identifier = (string) $userId;
+            $identifier = filament_loginguard_identifier($userId);
             $metadata = $location->toArray();
 
             if ($location->country !== null) {
@@ -179,7 +179,7 @@ class AuthenticationListener
                 $ip,
             );
 
-            $sessionId = app('session.store')->getId();
+            $sessionId = filament_loginguard_session_id();
 
             if (filled($sessionId)) {
                 $this->deviceManager->associateSession($device, $event->guard, $sessionId);
@@ -187,6 +187,9 @@ class AuthenticationListener
         }
     }
 
+    /**
+     * @param  array<mixed, mixed>  $credentials
+     */
     private function emailFromCredentials(array $credentials): ?string
     {
         $email = $credentials['email'] ?? null;
@@ -204,7 +207,7 @@ class AuthenticationListener
     private function lockoutException(int $secondsRemaining): ValidationException
     {
         $minutes = max(1, (int) ceil($secondsRemaining / 60));
-        $message = __('filament-loginguard::loginguard.messages.locked', ['minutes' => $minutes]);
+        $message = filament_loginguard_trans('filament-loginguard::loginguard.messages.locked', ['minutes' => $minutes]);
 
         // 'data.email' renders inline in the Filament login form (statePath 'data', same key the
         // core Login page uses); plain 'email' covers non-Filament custom login forms that read

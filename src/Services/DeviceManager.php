@@ -2,7 +2,10 @@
 
 namespace SolutionForest\FilamentLoginGuard\Services;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -30,13 +33,13 @@ class DeviceManager
      * Returns the device plus whether this login is the FIRST time this exact
      * device identity was seen for the account.
      *
-     * @param  object  $user  the authenticated user (getAuthIdentifier + getMorphClass)
+     * @param  Authenticatable  $user  the authenticated user
      * @return array{0: Device, 1: bool}
      */
-    public function resolveOrCreate(object $user, string $guard, ?string $userAgent, ?string $ip): array
+    public function resolveOrCreate(Authenticatable $user, string $guard, ?string $userAgent, ?string $ip): array
     {
         $userType = $user::class;
-        $identifier = (string) $user->getAuthIdentifier();
+        $identifier = filament_loginguard_identifier($user->getAuthIdentifier());
         $now = Carbon::now();
         $deviceName = ParsesUserAgent::parseDeviceName($userAgent);
 
@@ -69,10 +72,17 @@ class DeviceManager
 
             DeviceCookie::queue($rawToken);
 
+            $email = null;
+
+            if ($user instanceof Model) {
+                $value = $user->getAttribute('email');
+                $email = is_string($value) && filled($value) ? $value : null;
+            }
+
             SecurityEvent::record(
                 SecurityEvent::TYPE_DEVICE_REGISTERED,
                 $ip,
-                is_callable([$user, 'getAttribute']) ? ($user->getAttribute('email') ?? null) : null,
+                $email,
                 is_numeric($identifier) ? (int) $identifier : null,
                 $guard,
                 $deviceName,
@@ -108,7 +118,7 @@ class DeviceManager
      */
     public function signOutDevice(Device $device, string $currentSessionId): int
     {
-        $sessionsTable = (string) config('filament-loginguard.sessions.table', 'sessions');
+        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
 
         $sessionIds = $device->sessions()
             ->pluck('session_id')
@@ -140,7 +150,7 @@ class DeviceManager
      */
     public function revoke(Device $device, string $reason = 'this_is_not_me'): void
     {
-        $currentSessionId = (string) app('session.store')->getId();
+        $currentSessionId = filament_loginguard_session_id();
 
         DB::transaction(function () use ($device, $currentSessionId): void {
             // Do not trust a client-supplied device hash to protect the current
@@ -186,7 +196,7 @@ class DeviceManager
      *
      * @return int the number of other sessions that were removed
      */
-    public function signOutOthers(object $user, string $guard, string $userType, string $identifier, string $currentSessionId): int
+    public function signOutOthers(Authenticatable $user, string $guard, string $userType, string $identifier, string $currentSessionId): int
     {
         $deviceIds = $this->devicesFor($guard, $userType, $identifier)
             ->pluck('id');
@@ -200,7 +210,7 @@ class DeviceManager
             return 0;
         }
 
-        $sessionsTable = (string) config('filament-loginguard.sessions.table', 'sessions');
+        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
 
         // "Sign out" means deleting the real Laravel session rows, then the
         // stale mappings. Device identities are preserved.
@@ -230,15 +240,15 @@ class DeviceManager
 
         $notification = new NewDeviceLoginNotification(
             email: $email,
-            device: $device->device_name ?? __('filament-loginguard::loginguard.devices.unknown_device'),
+            device: $device->device_name ?? filament_loginguard_trans('filament-loginguard::loginguard.devices.unknown_device'),
             ip: $device->last_ip ?? '',
         );
 
         $queue = config('filament-loginguard.devices.notifications.mail.queue', false);
         $notifiable = Notification::route('mail', $email);
 
-        if ($queue !== false) {
-            $notifiable->notify($notification->onQueue((string) $queue));
+        if (is_string($queue) && $queue !== '') {
+            $notifiable->notify($notification->onQueue($queue));
         } else {
             $notifiable->notifyNow($notification);
         }
@@ -248,17 +258,18 @@ class DeviceManager
      * Hard cap of device identities per account: when exceeded, the oldest
      * devices without active sessions are removed.
      */
-    public function enforceDeviceCap(object $user, string $guard): void
+    public function enforceDeviceCap(Authenticatable $user, string $guard): void
     {
-        $cap = (int) config('filament-loginguard.devices.max_devices_per_user', 20);
+        $cap = filament_loginguard_config_int('filament-loginguard.devices.max_devices_per_user', 20);
 
         if ($cap <= 0) {
             return;
         }
 
         $userType = $user::class;
-        $identifier = (string) $user->getAuthIdentifier();
+        $identifier = filament_loginguard_identifier($user->getAuthIdentifier());
 
+        /** @var Collection<int, Device> $devices */
         $devices = $this->devicesFor($guard, $userType, $identifier)
             ->whereNull('revoked_at')
             ->orderByDesc('last_seen_at')
@@ -279,18 +290,18 @@ class DeviceManager
      */
     public function cleanup(): void
     {
-        $sessionsTable = (string) config('filament-loginguard.sessions.table', 'sessions');
+        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
 
         // Mappings pointing at dead sessions.
         DeviceSession::query()
-            ->whereNotExists(function ($query) use ($sessionsTable): void {
-                $query->selectRaw(1)
+            ->whereNotExists(function (\Illuminate\Database\Query\Builder $query) use ($sessionsTable): void {
+                $query->selectRaw('1')
                     ->from($sessionsTable)
                     ->whereColumn($sessionsTable . '.id', 'filament_loginguard_device_sessions.session_id');
             })
             ->delete();
 
-        $retentionDays = (int) config('filament-loginguard.devices.retention_days', 90);
+        $retentionDays = filament_loginguard_config_int('filament-loginguard.devices.retention_days', 90);
 
         if ($retentionDays > 0) {
             Device::query()

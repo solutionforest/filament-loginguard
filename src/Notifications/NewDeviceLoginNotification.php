@@ -29,11 +29,11 @@ class NewDeviceLoginNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject(__('filament-loginguard::loginguard.notifications.new_device.subject'))
-            ->greeting(__('filament-loginguard::loginguard.notifications.new_device.greeting'))
-            ->line(__('filament-loginguard::loginguard.notifications.new_device.email', ['email' => $this->email]))
-            ->line(__('filament-loginguard::loginguard.notifications.new_device.device', ['device' => $this->device]))
-            ->line(__('filament-loginguard::loginguard.notifications.new_device.ip', ['ip' => $this->ip]));
+            ->subject(filament_loginguard_trans('filament-loginguard::loginguard.notifications.new_device.subject'))
+            ->greeting(filament_loginguard_trans('filament-loginguard::loginguard.notifications.new_device.greeting'))
+            ->line(filament_loginguard_trans('filament-loginguard::loginguard.notifications.new_device.email', ['email' => $this->email]))
+            ->line(filament_loginguard_trans('filament-loginguard::loginguard.notifications.new_device.device', ['device' => $this->device]))
+            ->line(filament_loginguard_trans('filament-loginguard::loginguard.notifications.new_device.ip', ['ip' => $this->ip]));
 
         try {
             $devicesPageEnabled = class_exists(MyDevices::class)
@@ -45,7 +45,7 @@ class NewDeviceLoginNotification extends Notification implements ShouldQueue
         }
 
         if ($devicesPageEnabled) {
-            $mail->action(__('filament-loginguard::loginguard.notifications.new_device.review_devices'), MyDevices::getUrl());
+            $mail->action(filament_loginguard_trans('filament-loginguard::loginguard.notifications.new_device.review_devices'), MyDevices::getUrl());
         }
 
         return $mail;

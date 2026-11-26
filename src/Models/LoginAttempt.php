@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
+use SolutionForest\FilamentLoginGuard\Database\Factories\LoginAttemptFactory;
 use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
 
 /**
@@ -24,10 +25,13 @@ use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read string|null $device_name
+ * @property-read SecurityEvent|null $latestLocatedEvent
  */
 class LoginAttempt extends Model
 {
+    /** @use HasFactory<LoginAttemptFactory> */
     use HasFactory;
+
     use ParsesUserAgent;
 
     protected $table = 'filament_loginguard_attempts';
@@ -65,6 +69,10 @@ class LoginAttempt extends Model
         ])->save();
     }
 
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
     public function scopeLocked(Builder $query): Builder
     {
         return $query->where('locked_until', '>', now());
@@ -74,6 +82,8 @@ class LoginAttempt extends Model
      * The most recent security event carrying location metadata for this IP.
      * Powers the "country" badge on the admin attempts table; the of-many
      * subquery lets the table eager-load it in one query (no N+1).
+     *
+     * @return HasOne<SecurityEvent, $this>
      */
     public function latestLocatedEvent(): HasOne
     {

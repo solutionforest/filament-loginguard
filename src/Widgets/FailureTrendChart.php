@@ -15,7 +15,7 @@ class FailureTrendChart extends ChartWidget
 
     public function getHeading(): string
     {
-        return (string) __('filament-loginguard::loginguard.charts.failure_trend.heading');
+        return (string) filament_loginguard_trans('filament-loginguard::loginguard.charts.failure_trend.heading');
     }
 
     protected function getType(): string
@@ -28,8 +28,8 @@ class FailureTrendChart extends ChartWidget
      */
     protected function getFilters(): ?array
     {
-        $seven = (string) __('filament-loginguard::loginguard.charts.filters.last_7_days');
-        $thirty = (string) __('filament-loginguard::loginguard.charts.filters.last_30_days');
+        $seven = (string) filament_loginguard_trans('filament-loginguard::loginguard.charts.filters.last_7_days');
+        $thirty = (string) filament_loginguard_trans('filament-loginguard::loginguard.charts.filters.last_30_days');
 
         return [
             '7' => $seven,
@@ -68,7 +68,7 @@ class FailureTrendChart extends ChartWidget
         return [
             'datasets' => [
                 [
-                    'label' => (string) __('filament-loginguard::loginguard.charts.failure_trend.dataset'),
+                    'label' => (string) filament_loginguard_trans('filament-loginguard::loginguard.charts.failure_trend.dataset'),
                     'data' => $values,
                     'fill' => 'start',
                     'backgroundColor' => 'rgba(239, 68, 68, 0.15)',

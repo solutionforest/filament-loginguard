@@ -13,7 +13,7 @@ class TopAttackedEmailsChart extends ChartWidget
 
     public function getHeading(): string
     {
-        return (string) __('filament-loginguard::loginguard.charts.top_emails.heading');
+        return (string) filament_loginguard_trans('filament-loginguard::loginguard.charts.top_emails.heading');
     }
 
     protected function getType(): string
@@ -41,7 +41,7 @@ class TopAttackedEmailsChart extends ChartWidget
         return [
             'datasets' => [
                 [
-                    'label' => (string) __('filament-loginguard::loginguard.charts.top_emails.dataset'),
+                    'label' => (string) filament_loginguard_trans('filament-loginguard::loginguard.charts.top_emails.dataset'),
                     'data' => $top->pluck('aggregate')->all(),
                     'backgroundColor' => '#f97316',
                     'borderRadius' => 4,

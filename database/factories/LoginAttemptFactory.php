@@ -7,6 +7,9 @@ use Illuminate\Support\Carbon;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Models\LoginGuardLock;
 
+/**
+ * @extends Factory<LoginAttempt>
+ */
 class LoginAttemptFactory extends Factory
 {
     protected $model = LoginAttempt::class;
@@ -32,7 +35,7 @@ class LoginAttemptFactory extends Factory
     {
         return $this->state(function () use ($ip, $email, $lockedUntil): array {
             $attributes = [
-                'attempts' => (int) config('filament-loginguard.lockout.max_attempts'),
+                'attempts' => filament_loginguard_config_int('filament-loginguard.lockout.max_attempts', 10),
                 'lockout_count' => 1,
             ];
 

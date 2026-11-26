@@ -135,6 +135,6 @@ class LocationHistory extends Model
 
     private static function noveltyCutoff(): Carbon
     {
-        return Carbon::now()->subDays((int) config('filament-loginguard.ip_intel.novelty_window_days', 90));
+        return Carbon::now()->subDays(filament_loginguard_config_int('filament-loginguard.ip_intel.novelty_window_days', 90));
     }
 }

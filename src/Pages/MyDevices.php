@@ -34,12 +34,12 @@ class MyDevices extends Page
 
     public function getTitle(): string
     {
-        return __('filament-loginguard::loginguard.my_devices.title');
+        return filament_loginguard_trans('filament-loginguard::loginguard.my_devices.title');
     }
 
     public function getHeading(): string
     {
-        return __('filament-loginguard::loginguard.my_devices.heading');
+        return filament_loginguard_trans('filament-loginguard::loginguard.my_devices.heading');
     }
 
     public static function canAccess(): bool
@@ -57,19 +57,20 @@ class MyDevices extends Page
 
     public static function getDefaultSlug(): string
     {
-        return (string) (config('filament-loginguard.pages.my_devices.slug') ?: 'my-devices');
+        return filament_loginguard_config_string('filament-loginguard.pages.my_devices.slug', 'my-devices');
     }
 
     public static function getNavigationLabel(): string
     {
-        return (string) (config('filament-loginguard.pages.my_devices.navigation_label')
-            ?: __('filament-loginguard::loginguard.my_devices.navigation_label'));
+        return filament_loginguard_config_string(
+            'filament-loginguard.pages.my_devices.navigation_label',
+            filament_loginguard_trans('filament-loginguard::loginguard.my_devices.navigation_label'),
+        );
     }
 
     public static function getNavigationIcon(): string
     {
-        return (string) (config('filament-loginguard.pages.my_devices.navigation_icon')
-            ?: 'heroicon-o-device-phone-mobile');
+        return filament_loginguard_config_string('filament-loginguard.pages.my_devices.navigation_icon', 'heroicon-o-device-phone-mobile');
     }
 
     public static function getNavigationGroup(): ?string
@@ -109,12 +110,17 @@ class MyDevices extends Page
     protected function currentUserContext(): array
     {
         $user = Filament::auth()->user();
+
+        if ($user === null) {
+            throw new \RuntimeException('The My Devices page requires an authenticated user.');
+        }
+
         $guard = Filament::getCurrentPanel()?->getAuthGuard() ?? 'web';
 
         return [
             $user::class,
             $guard,
-            (string) $user->getAuthIdentifier(),
+            filament_loginguard_identifier($user->getAuthIdentifier()),
         ];
     }
 
@@ -141,8 +147,8 @@ class MyDevices extends Page
 
         $liveIds = $this->liveSessionDeviceIds($rest);
 
-        $active = $rest->filter(fn (Device $device): bool => in_array((int) $device->getKey(), $liveIds, true))->values();
-        $previous = $rest->filter(fn (Device $device): bool => ! in_array((int) $device->getKey(), $liveIds, true))->values();
+        $active = $rest->filter(fn (Device $device): bool => in_array($device->id, $liveIds, true))->values();
+        $previous = $rest->filter(fn (Device $device): bool => ! in_array($device->id, $liveIds, true))->values();
 
         return [$current, $active, $previous, $guard];
     }
@@ -162,7 +168,7 @@ class MyDevices extends Page
     {
         $count = $this->signedInCount();
 
-        return trans_choice('filament-loginguard::loginguard.my_devices.signed_in_count', $count, ['count' => $count]);
+        return filament_loginguard_trans_choice('filament-loginguard::loginguard.my_devices.signed_in_count', $count, ['count' => $count]);
     }
 
     /**
@@ -192,7 +198,7 @@ class MyDevices extends Page
      */
     public function deviceLabel(Device $device): string
     {
-        return $device->device_name ?? __('filament-loginguard::loginguard.devices.unknown_device');
+        return $device->device_name ?? filament_loginguard_trans('filament-loginguard::loginguard.devices.unknown_device');
     }
 
     /**
@@ -200,8 +206,8 @@ class MyDevices extends Page
      */
     public function liveSessionCount(Device $device): int
     {
-        $sessionsTable = (string) config('filament-loginguard.sessions.table', 'sessions');
-        $cutoff = now()->subMinutes((int) config('session.lifetime', 120))->getTimestamp();
+        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
+        $cutoff = now()->subMinutes(filament_loginguard_config_int('session.lifetime', 120))->getTimestamp();
 
         return $device->sessions()
             ->join($sessionsTable, 'filament_loginguard_device_sessions.session_id', '=', $sessionsTable . '.id')
@@ -213,7 +219,7 @@ class MyDevices extends Page
      * Device ids (from the given set) that still have a live session — one query.
      *
      * @param  Collection<int, Device>  $devices
-     * @return array<int, int>
+     * @return array<array-key, int>
      */
     protected function liveSessionDeviceIds(Collection $devices): array
     {
@@ -221,8 +227,8 @@ class MyDevices extends Page
             return [];
         }
 
-        $sessionsTable = (string) config('filament-loginguard.sessions.table', 'sessions');
-        $cutoff = now()->subMinutes((int) config('session.lifetime', 120))->getTimestamp();
+        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
+        $cutoff = now()->subMinutes(filament_loginguard_config_int('session.lifetime', 120))->getTimestamp();
 
         return DeviceSession::query()
             ->whereIn('device_id', $devices->pluck('id')->all())
@@ -230,7 +236,7 @@ class MyDevices extends Page
             ->where($sessionsTable . '.last_activity', '>=', $cutoff)
             ->distinct()
             ->pluck('device_id')
-            ->map(fn ($id): int => (int) $id)
+            ->map(fn ($id): int => filament_loginguard_intval($id))
             ->all();
     }
 
@@ -238,27 +244,33 @@ class MyDevices extends Page
     {
         return [
             Action::make('signOutOthers')
-                ->label(__('filament-loginguard::loginguard.my_devices.actions.sign_out_others'))
+                ->label(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.sign_out_others'))
                 ->color('gray')
                 ->requiresConfirmation()
-                ->modalHeading(__('filament-loginguard::loginguard.my_devices.actions.sign_out_others_heading'))
-                ->modalDescription(fn (): string => __('filament-loginguard::loginguard.my_devices.actions.sign_out_others_confirm', [
+                ->modalHeading(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.sign_out_others_heading'))
+                ->modalDescription(fn (): string => filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.sign_out_others_confirm', [
                     'count' => $this->otherSessionCount(),
                 ]))
                 ->visible(fn (): bool => $this->otherSessionCount() > 0)
                 ->action(function (): void {
                     [$userType, $guard, $identifier] = $this->currentUserContext();
 
+                    $user = Filament::auth()->user();
+
+                    if ($user === null) {
+                        return;
+                    }
+
                     app(DeviceManager::class)->signOutOthers(
-                        Filament::auth()->user(),
+                        $user,
                         $guard,
                         $userType,
                         $identifier,
-                        (string) app('session.store')->getId(),
+                        filament_loginguard_session_id(),
                     );
 
                     Notification::make()
-                        ->title(__('filament-loginguard::loginguard.my_devices.notifications.signed_out_others'))
+                        ->title(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.notifications.signed_out_others'))
                         ->success()
                         ->send();
                 }),
@@ -271,18 +283,18 @@ class MyDevices extends Page
     public function viewDeviceAction(): Action
     {
         return Action::make('viewDevice')
-            ->label(__('filament-loginguard::loginguard.my_devices.actions.view_details'))
+            ->label(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.view_details'))
             ->slideOver()
             ->modalWidth('md')
             ->modalHeading(function (array $arguments): string {
-                $device = $this->ownedDevice((string) ($arguments['device'] ?? ''));
+                $device = $this->ownedDevice($this->deviceIdFromArguments($arguments));
 
                 return $device !== null
                     ? $this->deviceLabel($device)
-                    : __('filament-loginguard::loginguard.devices.unknown_device');
+                    : filament_loginguard_trans('filament-loginguard::loginguard.devices.unknown_device');
             })
             ->modalContent(function (array $arguments): View {
-                $device = $this->ownedDevice((string) ($arguments['device'] ?? ''));
+                $device = $this->ownedDevice($this->deviceIdFromArguments($arguments));
 
                 return view('filament-loginguard::pages.my-devices-details', [
                     'device' => $device,
@@ -292,7 +304,7 @@ class MyDevices extends Page
                 ]);
             })
             ->modalSubmitAction(false)
-            ->modalCancelActionLabel(__('filament-loginguard::loginguard.my_devices.actions.close'));
+            ->modalCancelActionLabel(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.close'));
     }
 
     /**
@@ -301,12 +313,12 @@ class MyDevices extends Page
     public function signOutDeviceAction(): Action
     {
         return Action::make('signOutDevice')
-            ->label(__('filament-loginguard::loginguard.my_devices.actions.sign_out'))
+            ->label(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.sign_out'))
             ->color('gray')
             ->icon('heroicon-m-arrow-left-on-rectangle')
             ->requiresConfirmation()
-            ->modalHeading(__('filament-loginguard::loginguard.my_devices.actions.sign_out_heading'))
-            ->modalDescription(__('filament-loginguard::loginguard.my_devices.actions.sign_out_description'))
+            ->modalHeading(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.sign_out_heading'))
+            ->modalDescription(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.sign_out_description'))
             ->action(function (array $arguments): void {
                 $device = $this->actionableDevice($arguments);
 
@@ -314,14 +326,14 @@ class MyDevices extends Page
                     return;
                 }
 
-                app(DeviceManager::class)->signOutDevice($device, (string) app('session.store')->getId());
+                app(DeviceManager::class)->signOutDevice($device, filament_loginguard_session_id());
 
                 SecurityEvent::record(SecurityEvent::TYPE_SESSION_REVOKED_BY_USER, $device->last_ip, null, null, $device->guard, $device->device_name, [
                     'device_id' => $device->id,
                 ]);
 
                 Notification::make()
-                    ->title(__('filament-loginguard::loginguard.my_devices.notifications.signed_out'))
+                    ->title(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.notifications.signed_out'))
                     ->success()
                     ->send();
             });
@@ -333,12 +345,12 @@ class MyDevices extends Page
     public function revokeDeviceAction(): Action
     {
         return Action::make('revokeDevice')
-            ->label(__('filament-loginguard::loginguard.my_devices.actions.this_is_not_me'))
+            ->label(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.this_is_not_me'))
             ->color('danger')
             ->icon('heroicon-m-exclamation-triangle')
             ->requiresConfirmation()
-            ->modalHeading(__('filament-loginguard::loginguard.my_devices.actions.this_is_not_me_heading'))
-            ->modalDescription(__('filament-loginguard::loginguard.my_devices.actions.this_is_not_me_description'))
+            ->modalHeading(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.this_is_not_me_heading'))
+            ->modalDescription(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.this_is_not_me_description'))
             ->action(function (array $arguments): void {
                 $device = $this->actionableDevice($arguments);
 
@@ -349,7 +361,7 @@ class MyDevices extends Page
                 app(DeviceManager::class)->revoke($device, reason: 'this_is_not_me');
 
                 Notification::make()
-                    ->title(__('filament-loginguard::loginguard.my_devices.notifications.revoked'))
+                    ->title(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.notifications.revoked'))
                     ->success()
                     ->send();
             });
@@ -361,14 +373,14 @@ class MyDevices extends Page
     public function forgetDeviceAction(): Action
     {
         return Action::make('forgetDevice')
-            ->label(__('filament-loginguard::loginguard.my_devices.actions.forget'))
+            ->label(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.forget'))
             ->color('gray')
             ->icon('heroicon-m-trash')
             ->requiresConfirmation()
-            ->modalHeading(__('filament-loginguard::loginguard.my_devices.actions.forget_heading'))
-            ->modalDescription(__('filament-loginguard::loginguard.my_devices.actions.forget_description'))
+            ->modalHeading(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.forget_heading'))
+            ->modalDescription(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.forget_description'))
             ->action(function (array $arguments): void {
-                $device = $this->ownedDevice((string) ($arguments['device'] ?? ''));
+                $device = $this->ownedDevice($this->deviceIdFromArguments($arguments));
 
                 if ($device === null || $this->isCurrentDevice($device)) {
                     return;
@@ -377,7 +389,7 @@ class MyDevices extends Page
                 app(DeviceManager::class)->forget($device);
 
                 Notification::make()
-                    ->title(__('filament-loginguard::loginguard.my_devices.notifications.forgotten'))
+                    ->title(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.notifications.forgotten'))
                     ->success()
                     ->send();
             });
@@ -386,7 +398,7 @@ class MyDevices extends Page
     public function otherSessionCount(): int
     {
         [$userType, $guard, $identifier] = $this->currentUserContext();
-        $currentSessionId = (string) app('session.store')->getId();
+        $currentSessionId = filament_loginguard_session_id();
 
         $deviceIds = $this->ownedDevicesQuery($guard, $userType, $identifier)
             ->pluck('id');
@@ -398,12 +410,24 @@ class MyDevices extends Page
     }
 
     /**
+     * @param  array<mixed, mixed>  $arguments
+     */
+    private function deviceIdFromArguments(array $arguments): string
+    {
+        $deviceId = $arguments['device'] ?? '';
+
+        return is_string($deviceId) || is_int($deviceId) ? (string) $deviceId : '';
+    }
+
+    /**
      * The device from an action's `device` argument, ownership-checked and
      * guaranteed to not be the current device.
+     *
+     * @param  array<mixed, mixed>  $arguments
      */
     private function actionableDevice(array $arguments): ?Device
     {
-        $device = $this->ownedDevice((string) ($arguments['device'] ?? ''));
+        $device = $this->ownedDevice($this->deviceIdFromArguments($arguments));
 
         if ($device === null || $this->isCurrentDevice($device)) {
             return null;

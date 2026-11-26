@@ -2,6 +2,7 @@
 
 namespace SolutionForest\FilamentLoginGuard\Http\Controllers;
 
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\URL;
@@ -14,7 +15,7 @@ class SelfUnlockController extends Controller
      * link prefetchers may follow the emailed GET link, so the state change
      * only ever happens on the POST below.
      */
-    public function show(Request $request, string $token, LoginGuardService $service)
+    public function show(Request $request, string $token, LoginGuardService $service): View
     {
         if (! URL::hasValidSignature($request)) {
             abort(403);
@@ -35,7 +36,7 @@ class SelfUnlockController extends Controller
      * Consume the link and clear the email lock. The signature check, the
      * one-time token guard and the unlock itself all happen here.
      */
-    public function unlock(Request $request, string $token, LoginGuardService $service)
+    public function unlock(Request $request, string $token, LoginGuardService $service): View
     {
         if (! URL::hasValidSignature($request)) {
             abort(403);
