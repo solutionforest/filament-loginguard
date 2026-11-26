@@ -53,3 +53,13 @@ it('detects a pair lock only for the matching email and ip', function () {
         ->assertLoginGuardNotLocked('b@example.com', '1.2.3.4')
         ->assertLoginGuardNotLocked('a@example.com');
 });
+
+it('includes counters from both stored IPv4 spellings in the scoped helper', function () {
+    foreach (['::ffff:192.0.2.1' => 2, '192.0.2.1' => 3, '192.0.2.2' => 4] as $ip => $attempts) {
+        LoginAttempt::factory()->create(['email' => 'owner@example.test', 'ip' => $ip, 'attempts' => $attempts]);
+    }
+    Livewire::test(TestLivewireComponent::class)
+        ->assertLoginGuardAttempts(5, 'owner@example.test', '192.0.2.1')
+        ->assertLoginGuardAttempts(5, 'owner@example.test', '::ffff:192.0.2.1')
+        ->assertLoginGuardAttempts(9, 'owner@example.test');
+});

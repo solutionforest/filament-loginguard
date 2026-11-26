@@ -16,7 +16,6 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\DB;
 use SolutionForest\FilamentLoginGuard\Filament\Exports\LoginAttemptExporter;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
@@ -193,31 +192,7 @@ class LoginGuard extends Page implements HasTable
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return match ($data['value']) {
-                            'locked' => $query->where(function (Builder $q): void {
-                                // Blocked by the row's IP lock, its email lock,
-                                // or the exact-pair lock (per-pair tracking mode).
-                                $q->whereExists(function (\Illuminate\Database\Query\Builder $sub): void {
-                                    $sub->selectRaw('1')
-                                        ->from('filament_loginguard_locks')
-                                        ->whereColumn('scope_key', 'filament_loginguard_attempts.ip')
-                                        ->where('scope_type', 'ip')
-                                        ->where('locked_until', '>', now());
-                                })->orWhereExists(function (\Illuminate\Database\Query\Builder $sub): void {
-                                    $sub->selectRaw('1')
-                                        ->from('filament_loginguard_locks')
-                                        ->whereColumn('scope_key', 'filament_loginguard_attempts.email')
-                                        ->where('scope_type', 'email')
-                                        ->where('locked_until', '>', now());
-                                })->orWhereExists(function (\Illuminate\Database\Query\Builder $sub): void {
-                                    $sub->selectRaw('1')
-                                        ->from('filament_loginguard_locks')
-                                        ->where('scope_type', 'pair')
-                                        ->where('locked_until', '>', now())
-                                        ->whereRaw(
-                                            DB::raw('scope_key = ' . app(LoginGuardService::class)->pairScopeExpression('filament_loginguard_attempts.ip', 'filament_loginguard_attempts.email')),
-                                        );
-                                });
-                            }),
+                            'locked' => $query->where(fn (Builder $attempt) => $attempt->whereExists(app(LoginGuardService::class)->activeLocksForAttempt())),
                             'tracked' => $query->where('attempts', '>', 0),
                             default => $query,
                         };

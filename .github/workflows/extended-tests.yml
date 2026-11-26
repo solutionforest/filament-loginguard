@@ -83,15 +83,15 @@ jobs:
           MYSQL_PWD: loginguard-ci-only
           LOGINGUARD_TEST_PORT: ${{ job.services.mysql.ports[3306] }}
         run: mysql --protocol=TCP --host=127.0.0.1 --port="$LOGINGUARD_TEST_PORT" --user=root --execute='CREATE DATABASE loginguard_concurrency_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
-      - name: Execute the complete suite against MySQL
-        env:
-          LOGINGUARD_TEST_PORT: ${{ job.services.mysql.ports[3306] }}
-        run: vendor/bin/pest --ci
       - name: Exercise concurrent production service calls
-        if: success() || failure()
         env:
           LOGINGUARD_CONCURRENCY_PORT: ${{ job.services.mysql.ports[3306] }}
         run: php tests/Concurrency/run.php
+      - name: Execute the complete suite against MySQL
+        if: success() || failure()
+        env:
+          LOGINGUARD_TEST_PORT: ${{ job.services.mysql.ports[3306] }}
+        run: vendor/bin/pest --ci --stop-on-failure
 
   browser:
     name: Chromium browser flows

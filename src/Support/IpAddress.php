@@ -37,6 +37,21 @@ final class IpAddress
     }
 
     /**
+     * Older releases stored some mapped IPv4 inputs in inet_ntop's mapped
+     * notation. New rows use the first key; reads include the historical key.
+     *
+     * @return non-empty-list<string>
+     */
+    public static function storedKeys(string $ip): array
+    {
+        $canonical = self::normalize($ip);
+
+        return filter_var($canonical, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false
+            ? [$canonical, '::ffff:' . $canonical]
+            : [$ip];
+    }
+
+    /**
      * Resolve the real client IP of the current request.
      *
      * When the immediate request IP matches a proxy in

@@ -380,3 +380,17 @@ it('resolves no located event when the IP has no location metadata', function ()
 
     expect($resolved->latestLocatedEvent)->toBeNull();
 });
+
+it('filters and retains locked attempts across the historical IPv4 spelling', function (string $scope, string $attemptIp, string $lockIp) {
+    $attempt = LoginAttempt::factory()->create(['ip' => $attemptIp, 'email' => 'owner@example.test', 'last_attempt_at' => now()->subDay()]);
+    $other = LoginAttempt::factory()->create(['ip' => '192.0.2.2', 'email' => 'owner@example.test', 'last_attempt_at' => now()->subDay()]);
+    LoginGuardLock::query()->create(['scope_type' => $scope, 'scope_key' => $scope === 'pair' ? $lockIp . '|owner@example.test' : $lockIp, 'locked_until' => now()->addHour()]);
+
+    Livewire::test(LoginGuard::class)->filterTable('status', 'locked')
+        ->assertCanSeeTableRecords([$attempt])->assertCanNotSeeTableRecords([$other]);
+    $this->artisan('filament-loginguard:cleanup-attempts')->assertSuccessful();
+    expect($attempt->fresh())->not->toBeNull()->and($other->fresh())->toBeNull();
+})->with([
+    ['pair', '192.0.2.1', '::ffff:192.0.2.1'],
+    ['ip', '::ffff:192.0.2.1', '192.0.2.1'],
+]);

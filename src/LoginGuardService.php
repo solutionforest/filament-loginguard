@@ -4,6 +4,7 @@ namespace SolutionForest\FilamentLoginGuard;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -92,13 +93,37 @@ final class LoginGuardService
      */
     public function pairScopeExpression(string $ipColumn, string $emailColumn): string
     {
-        $driver = DB::connection()->getDriverName();
+        return $this->concatenate([$ipColumn, "'|'", $emailColumn]);
+    }
 
-        $concat = in_array($driver, ['mysql', 'mariadb'], true)
-            ? "CONCAT(%s, '|', %s)"
-            : "%s || '|' || %s";
+    /** @param list<string> $expressions */
+    private function concatenate(array $expressions): string
+    {
+        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb', 'sqlsrv'], true)
+            ? 'CONCAT(' . implode(', ', $expressions) . ')'
+            : '(' . implode(' || ', $expressions) . ')';
+    }
 
-        return sprintf($concat, $ipColumn, $emailColumn);
+    /** Correlated lock lookup shared by the attempts table filter and retention cleanup. */
+    public function activeLocksForAttempt(): QueryBuilder
+    {
+        $ip = 'filament_loginguard_attempts.ip';
+        $email = 'filament_loginguard_attempts.email';
+        $mapped = $this->concatenate(["'::ffff:'", $ip]);
+        $unmapped = DB::connection()->getDriverName() === 'sqlsrv' ? "SUBSTRING({$ip}, 8, 45)" : "SUBSTR({$ip}, 8)";
+        $alternate = "CASE WHEN {$ip} LIKE '::ffff:%.%.%.%' THEN {$unmapped}"
+            . " WHEN {$ip} LIKE '%.%.%.%' AND {$ip} NOT LIKE '%:%' THEN {$mapped} ELSE {$ip} END";
+        $pair = $this->pairScopeExpression($ip, $email);
+        $alternatePair = $this->pairScopeExpression($alternate, $email);
+
+        return DB::table('filament_loginguard_locks')
+            ->selectRaw('1')
+            ->where('locked_until', '>', now())
+            ->where(function (QueryBuilder $scopes) use ($ip, $alternate, $email, $pair, $alternatePair): void {
+                $scopes->where(fn (QueryBuilder $q) => $q->where('scope_type', LoginGuardLock::SCOPE_IP)->whereIn('scope_key', [DB::raw($ip), DB::raw($alternate)]))
+                    ->orWhere(fn (QueryBuilder $q) => $q->where('scope_type', LoginGuardLock::SCOPE_EMAIL)->whereColumn('scope_key', $email))
+                    ->orWhere(fn (QueryBuilder $q) => $q->where('scope_type', LoginGuardLock::SCOPE_PAIR)->whereIn('scope_key', [DB::raw($pair), DB::raw($alternatePair)]));
+            });
     }
 
     /**
@@ -110,11 +135,13 @@ final class LoginGuardService
      */
     private function activeLocksQuery(?string $ip, ?string $email): Builder
     {
+        $ips = $ip === null ? [] : IpAddress::storedKeys($ip);
+
         return LoginGuardLock::activeQuery()
-            ->where(function (Builder $query) use ($ip, $email): void {
-                $query->where(function (Builder $q) use ($ip): void {
+            ->where(function (Builder $query) use ($ips, $email): void {
+                $query->where(function (Builder $q) use ($ips): void {
                     $q->where('scope_type', LoginGuardLock::SCOPE_IP)
-                        ->where('scope_key', $ip);
+                        ->whereIn('scope_key', $ips);
                 });
 
                 if (filled($email)) {
@@ -123,10 +150,10 @@ final class LoginGuardService
                             ->where('scope_key', $email);
                     });
 
-                    if ($ip !== null) {
-                        $query->orWhere(function (Builder $q) use ($ip, $email): void {
+                    if ($ips !== []) {
+                        $query->orWhere(function (Builder $q) use ($ips, $email): void {
                             $q->where('scope_type', LoginGuardLock::SCOPE_PAIR)
-                                ->where('scope_key', $ip . '|' . $email);
+                                ->whereIn('scope_key', array_map(fn (string $ip): string => $ip . '|' . $email, $ips));
                         });
                     }
                 }
@@ -158,8 +185,11 @@ final class LoginGuardService
             $userAgent = Str::substr($userAgent, 0, 252) . '...';
         }
 
+        $ips = IpAddress::storedKeys($ip);
+        $ip = $ips[0];
+
         /** @var LockoutResult $result */
-        $result = DB::transaction(function () use ($ip, $email, $userAgent): LockoutResult {
+        $result = DB::transaction(function () use ($ip, $ips, $email, $userAgent): LockoutResult {
             $now = Carbon::now();
             $maxAttempts = filament_loginguard_config_int('filament-loginguard.lockout.max_attempts', 10);
             $windowMinutes = filament_loginguard_config_int('filament-loginguard.lockout.attempts_window_minutes', 30);
@@ -206,16 +236,13 @@ final class LoginGuardService
                     ->update(['attempts' => 0, 'window_started_at' => $now]);
             }
 
-            $updatedRows = LoginAttempt::query()
+            LoginAttempt::query()
                 ->whereKey($key)
                 ->update([
                     'attempts' => DB::raw('attempts + 1'),
                     'last_attempt_at' => $now,
                     'user_agent' => $userAgent,
                 ]);
-
-            $row = LoginAttempt::query()->findOrFail($key);
-            $attempts = $updatedRows > 0 ? (int) $row->attempts : 1;
 
             // Aggregate sums count attempts of all rows of the same IP (or same email)
             // whose window is still active. A threshold breach locks the *scope*
@@ -224,7 +251,7 @@ final class LoginGuardService
 
             if ($trackIp) {
                 $ipAttempts = filament_loginguard_intval(LoginAttempt::query()
-                    ->where('ip', $ip)
+                    ->whereIn('ip', $ips)
                     ->where('window_started_at', '>', $cutoff)
                     ->sum('attempts'));
 
@@ -244,12 +271,14 @@ final class LoginGuardService
                 }
             }
 
-            if (! $trackIp && ! $trackEmail && $attempts >= $maxAttempts) {
-                // Per-pair semantics: lock the exact (ip, email) pair only, so other
-                // pairs sharing the IP or the email stay untouched.
-                $lockScopes = [
-                    [LoginGuardLock::SCOPE_PAIR, $ip . '|' . $email],
-                ];
+            if (! $trackIp && ! $trackEmail) {
+                $attempts = filament_loginguard_intval(LoginAttempt::query()
+                    ->whereIn('ip', $ips)->where('email', $email)
+                    ->where('window_started_at', '>', $cutoff)->sum('attempts'));
+
+                if ($attempts >= $maxAttempts) {
+                    $lockScopes[] = [LoginGuardLock::SCOPE_PAIR, $ip . '|' . $email];
+                }
             }
 
             if ($lockScopes === []) {
@@ -266,7 +295,8 @@ final class LoginGuardService
                 /** @var LoginGuardLock|null $lock */
                 $lock = LoginGuardLock::query()
                     ->where('scope_type', $scopeType)
-                    ->where('scope_key', $scopeKey)
+                    ->whereIn('scope_key', $this->storedScopeKeys($scopeType, $scopeKey))
+                    ->orderByDesc('locked_until')
                     ->first();
 
                 // The escalation position is derived from the append-only history
@@ -280,14 +310,14 @@ final class LoginGuardService
                 // ladder without any backfill or synthetic rows.
                 $newCount = filament_loginguard_intval(match ($scopeType) {
                     LoginGuardLock::SCOPE_IP => LockoutHistory::query()
-                        ->where('ip', $scopeKey)
+                        ->whereIn('ip', $ips)
                         ->max('lockout_count'),
                     LoginGuardLock::SCOPE_EMAIL => LockoutHistory::query()
                         ->where('email', $scopeKey)
                         ->max('lockout_count'),
                     default => LockoutHistory::query()
-                        ->where('ip', explode('|', $scopeKey, 2)[0])
-                        ->where('email', explode('|', $scopeKey, 2)[1])
+                        ->whereIn('ip', $ips)
+                        ->where('email', $email)
                         ->max('lockout_count'),
                 } ?? 0) + 1;
 
@@ -410,7 +440,7 @@ final class LoginGuardService
             return;
         }
 
-        $query = LoginAttempt::query()->where('ip', $ip);
+        $query = LoginAttempt::query()->whereIn('ip', IpAddress::storedKeys($ip));
 
         if (filled($email)) {
             $query->where('email', $email);
@@ -438,19 +468,14 @@ final class LoginGuardService
             return;
         }
 
-        /** @var LoginAttempt $row */
-        $row = LoginAttempt::query()->firstOrCreate(['ip' => $ip, 'email' => $email]);
-
-        $row->forceFill([
-            'attempts' => 0,
-            'lockout_count' => 0,
-            'last_attempt_at' => null,
-            'window_started_at' => null,
-            'success_count' => (int) $row->success_count + 1,
-            'last_success_at' => Carbon::now(),
-        ])->save();
-
-        $this->releaseLock(LoginGuardLock::SCOPE_EMAIL, $email, reason: 'successful_login');
+        DB::transaction(function () use ($ip, $email): void {
+            $this->resetForSuccess($ip, $email);
+            $row = LoginAttempt::query()->firstOrCreate(['ip' => IpAddress::storedKeys($ip)[0], 'email' => $email]);
+            $row->forceFill([
+                'success_count' => (int) $row->success_count + 1,
+                'last_success_at' => Carbon::now(),
+            ])->save();
+        });
     }
 
     /**
@@ -702,7 +727,7 @@ final class LoginGuardService
     {
         $released = filament_loginguard_intval(LoginGuardLock::query()
             ->where('scope_type', $scopeType)
-            ->where('scope_key', $scopeKey)
+            ->whereIn('scope_key', $this->storedScopeKeys($scopeType, $scopeKey))
             ->delete());
 
         if ($released > 0) {
@@ -713,7 +738,23 @@ final class LoginGuardService
             ]);
         }
 
-        return $released;
+        return $released > 0 ? 1 : 0;
+    }
+
+    /** @return non-empty-list<string> */
+    private function storedScopeKeys(string $scopeType, string $scopeKey): array
+    {
+        if ($scopeType === LoginGuardLock::SCOPE_IP) {
+            return IpAddress::storedKeys($scopeKey);
+        }
+
+        if ($scopeType === LoginGuardLock::SCOPE_PAIR && str_contains($scopeKey, '|')) {
+            [$ip, $email] = explode('|', $scopeKey, 2);
+
+            return array_map(fn (string $key): string => $key . '|' . $email, IpAddress::storedKeys($ip));
+        }
+
+        return [$scopeKey];
     }
 
     /**

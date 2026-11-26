@@ -13,7 +13,7 @@ const publicPath = join(root, 'vendor/orchestra/testbench-core/laravel/public')
 export const test = base.extend({
     // Lockouts include an IP-wide key. Give each test its own server and SQLite
     // database so tests can run in either order, including individual retries.
-    baseURL: async ({}, use) => {
+    baseURL: async ({}, use, testInfo) => {
         const directory = mkdtempSync(join(tmpdir(), 'loginguard-browser-'))
         const database = join(directory, 'workbench.sqlite')
         const port = Number(process.env.LOGINGUARD_BROWSER_PORT ?? 8765)
@@ -21,6 +21,7 @@ export const test = base.extend({
         const env = {
             ...process.env,
             APP_ENV: 'local',
+            APP_DEBUG: 'true',
             APP_URL: url,
             APP_KEY: `base64:${randomBytes(32).toString('base64')}`,
             DB_CONNECTION: 'sqlite',
@@ -28,6 +29,7 @@ export const test = base.extend({
             DB_URL: '',
             SESSION_CONNECTION: 'sqlite',
             SESSION_DRIVER: 'database',
+            LOG_CHANNEL: 'stderr',
             MAIL_MAILER: 'array',
             CACHE_STORE: 'array',
             QUEUE_CONNECTION: 'sync',
@@ -35,6 +37,8 @@ export const test = base.extend({
         }
 
         let server
+        let diagnostics = ''
+        let loginResponse
         try {
             writeFileSync(database, '', { flag: 'wx' })
             execFileSync(
@@ -54,19 +58,28 @@ export const test = base.extend({
                 root,
                 'vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php',
             )
-            server = spawn('php', ['-S', `127.0.0.1:${port}`, router], {
-                cwd: publicPath,
-                env,
-            })
-            let diagnostics = ''
+            // Testbench reads the test configuration from PHP's environment.
+            // Include $_ENV explicitly for hosts using the default GPCS order.
+            server = spawn(
+                'php',
+                [
+                    '-d',
+                    'variables_order=EGPCS',
+                    '-S',
+                    `127.0.0.1:${port}`,
+                    router,
+                ],
+                { cwd: publicPath, env },
+            )
             let listening = false
-            server.stderr.on('data', (chunk) => {
-                diagnostics = (diagnostics + chunk).slice(-4000)
+            const collectOutput = (chunk) => {
+                diagnostics = (diagnostics + chunk).slice(-32_768)
                 listening ||= diagnostics.includes(
                     'Development Server (' + url + ') started',
                 )
-            })
-            server.stdout.resume()
+            }
+            server.stderr.on('data', collectOutput)
+            server.stdout.on('data', collectOutput)
 
             await expect
                 .poll(
@@ -76,9 +89,22 @@ export const test = base.extend({
                                 `Workbench server exited. ${diagnostics}`,
                             )
                         if (!listening) return undefined
-                        const response = await fetch(`${url}/login`).catch(
-                            () => null,
-                        )
+                        const response = await fetch(`${url}/login`, {
+                            headers: { Accept: 'application/json' },
+                            signal: AbortSignal.timeout(2000),
+                        }).catch(() => null)
+
+                        if (response && response.status >= 500) {
+                            loginResponse = (await response.text()).slice(
+                                0,
+                                8192,
+                            )
+                            throw new Error(
+                                `Workbench GET /login returned HTTP ${response.status}`,
+                            )
+                        }
+
+                        await response?.body?.cancel()
                         return response?.status
                     },
                     {
@@ -89,6 +115,24 @@ export const test = base.extend({
                 .toBe(200)
 
             await use(url)
+        } catch (error) {
+            const logPath = testInfo.outputPath('workbench.log')
+            writeFileSync(logPath, diagnostics)
+            await testInfo.attach('Workbench server output', {
+                path: logPath,
+                contentType: 'text/plain',
+            })
+
+            if (loginResponse !== undefined) {
+                const responsePath = testInfo.outputPath('workbench-login.txt')
+                writeFileSync(responsePath, loginResponse)
+                await testInfo.attach('Workbench login response', {
+                    path: responsePath,
+                    contentType: 'text/plain',
+                })
+            }
+
+            throw error
         } finally {
             if (
                 server &&
