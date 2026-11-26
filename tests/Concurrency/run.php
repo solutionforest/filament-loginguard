@@ -27,7 +27,7 @@ function requireCondition(bool $condition, string $message): void
     }
 }
 
-function runWorker(string $directory, string $barrier, int $maxAttempts, string $ip, string $email): void
+function runWorker(string $directory, string $barrier, int $maxAttempts, string $ip, string $email, string $operation): void
 {
     requireCondition(is_dir($barrier), 'The worker barrier is missing.');
     concurrencyDatabase($directory, $maxAttempts);
@@ -43,12 +43,22 @@ function runWorker(string $directory, string $barrier, int $maxAttempts, string 
         clearstatcache(true, $start);
     }
 
-    $result = (new LoginGuardService)->recordFailure($ip, $email);
+    $service = new LoginGuardService;
+
+    if ($operation === 'success') {
+        $service->recordSuccess($ip, $email);
+        fwrite(STDOUT, "succeeded\n");
+
+        return;
+    }
+
+    requireCondition($operation === 'failure', 'Unknown worker operation.');
+    $result = $service->recordFailure($ip, $email);
     fwrite(STDOUT, $result->locked ? "locked\n" : "counted\n");
 }
 
 /** @param list<array{string, string}> $pairs */
-function recordConcurrently(string $directory, string $scenario, array $pairs, int $maxAttempts): int
+function recordConcurrently(string $directory, string $scenario, array $pairs, int $maxAttempts, string $operation = 'failure'): int
 {
     $barrier = $directory . '/' . $scenario;
     requireCondition(mkdir($barrier, 0700), "Cannot create the barrier for [{$scenario}].");
@@ -57,7 +67,7 @@ function recordConcurrently(string $directory, string $scenario, array $pairs, i
 
     try {
         foreach ($pairs as [$ip, $email]) {
-            $process = new Process([PHP_BINARY, __FILE__, 'worker', $directory, $barrier, (string) $maxAttempts, $ip, $email]);
+            $process = new Process([PHP_BINARY, __FILE__, 'worker', $directory, $barrier, (string) $maxAttempts, $ip, $email, $operation]);
             $process->setTimeout(BARRIER_TIMEOUT * 2);
             $process->start();
             $workers[] = $process;
@@ -83,18 +93,20 @@ function recordConcurrently(string $directory, string $scenario, array $pairs, i
 
         $confirmed = 0;
         $errors = [];
+        $successfulOutput = $operation === 'success' ? "ready\nsucceeded\n" : "ready\nlocked\n";
+        $validOutputs = $operation === 'success' ? [$successfulOutput] : [$successfulOutput, "ready\ncounted\n"];
 
         foreach ($workers as $index => $process) {
             $process->wait();
             $output = str_replace("\r\n", "\n", $process->getOutput());
 
-            if (! $process->isSuccessful() || ! in_array($output, ["ready\ncounted\n", "ready\nlocked\n"], true)) {
+            if (! $process->isSuccessful() || ! in_array($output, $validOutputs, true)) {
                 $errors[] = "Worker {$index}: " . trim($process->getErrorOutput());
 
                 continue;
             }
 
-            if ($output === "ready\nlocked\n") {
+            if ($output === $successfulOutput) {
                 $confirmed++;
             }
         }
@@ -191,6 +203,23 @@ function runScenarios(string $directory): int
         }
     }
 
+    $scenario = 'same-pair-first-successes';
+
+    try {
+        $pair = ['192.0.2.6', 'first-success@example.test'];
+        $confirmed = recordConcurrently($directory, $scenario, array_fill(0, WORKER_COUNT, $pair), 20, operation: 'success');
+        [$ip, $email] = $pair;
+        $record = LoginAttempt::query()->where('ip', $ip)->where('email', $email)->sole();
+
+        requireCondition($confirmed === WORKER_COUNT, "Expected all workers to record a success, got {$confirmed}.");
+        requireCondition($record->success_count === WORKER_COUNT, "Expected eight successes, found {$record->success_count}.");
+        requireCondition($record->last_success_at?->toDateTimeString() === FROZEN_TIME, 'The success counter has an incorrect latest timestamp.');
+
+        fwrite(STDOUT, "PASS  {$scenario}\n");
+    } catch (Throwable $exception) {
+        $failures[] = "{$scenario}: " . $exception->getMessage();
+    }
+
     foreach ($failures as $failure) {
         fwrite(STDERR, "FAIL  {$failure}\n");
     }
@@ -231,8 +260,8 @@ function runConcurrencySuite(): int
 
 try {
     if (($argv[1] ?? null) === 'worker') {
-        requireCondition($argc === 7, 'Invalid worker arguments.');
-        runWorker($argv[2], $argv[3], (int) $argv[4], $argv[5], $argv[6]);
+        requireCondition($argc === 8, 'Invalid worker arguments.');
+        runWorker($argv[2], $argv[3], (int) $argv[4], $argv[5], $argv[6], $argv[7]);
         exit(0);
     }
 
