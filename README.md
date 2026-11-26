@@ -127,6 +127,19 @@ composer require geoip2/geoip2
 
 Then point the config at MaxMind GeoLite2 `.mmdb` files and set `ip_intel.enabled` to `true`. See [IP intelligence](#ip-intelligence).
 
+### CSV export prerequisites
+
+The CSV export buttons are built on [Filament's export system](https://filamentphp.com/docs/5.x/actions/export), which needs its own database tables. Fresh apps may be missing them — run:
+
+```bash
+php artisan make:queue-batches-table
+php artisan make:notifications-table
+php artisan vendor:publish --tag=filament-actions-migrations
+php artisan migrate
+```
+
+Without these, the first export attempt fails with a "table not found" error (`exports`, `job_batches` or `notifications`). Exports also run through the queue, so a queue worker (or the `sync` driver) must be available.
+
 ## How it works
 
 The package hooks into Laravel's core auth events rather than any specific UI, so it protects **every** login flow that goes through `Auth::attempt()` — native Laravel (Breeze, the starter kits), Filament, and custom controllers alike.
@@ -242,12 +255,12 @@ Behaviour is set in `config/filament-loginguard.php`, published with:
 php artisan vendor:publish --tag="filament-loginguard-config"
 ```
 
-Every option has a default and is documented inline. The ones you'll most likely touch:
+Every option has a default and is documented inline. Here is the full published config, grouped into six sections — `lockout` (brute-force protection), `sessions` (active-session tracking), `devices` (device identity for My Devices), `ip_intel` (GeoIP enrichment), `maintenance` (optional auto-scheduling) and `pages` (admin page wiring):
 
 ```php
 return [
     'lockout' => [
-        'enabled' => true,
+        'enabled' => true,                 // master switch
         'max_attempts' => 10,              // failures allowed inside the window before a lockout
         'initial_minutes' => 15,           // duration of the first lockout
         'escalation_hours' => [24, 72, 168], // 2nd, 3rd, 4th+ lockout durations; last value repeats
@@ -272,37 +285,122 @@ return [
                 'cooldown_minutes' => 60,  // at most one notification per IP per window
                 'queue' => false,          // false = sync; queue name string = queued
             ],
-            'self_unlock' => [             // anti-DoS: signed, single-use unlock link to the blocked address
-                'enabled' => false,
-                'link_ttl_minutes' => 60,
+            'self_unlock' => [
+                'enabled' => false,        // mail a signed, single-use unlock link to the blocked address
+                'link_ttl_minutes' => 60,  // how long the unlock link stays valid
+                'queue' => false,          // false = sync; queue name string = queued
+            ],
+        ],
+    ],
+
+    // Active user sessions (requires SESSION_DRIVER=database).
+    'sessions' => [
+        'enabled' => true,                 // master switch for session security features
+        'table' => 'sessions',
+        'online_threshold_seconds' => 60,  // "online now" cutoff
+        'user_model' => null,              // null = auth.providers.users.model
+        'concurrent_limit' => null,        // max concurrent sessions per user; null = unlimited
+
+        'new_device' => [
+            'enabled' => true,             // @deprecated v0.7 — see devices.*
+            'window_hours' => 24,          // sessions first seen within this window are flagged "New"
+
+            'notifications' => [
+                'enabled' => false,        // emails the account owner the first time a device is seen
+                'mail' => [
+                    'queue' => false,
+                ],
+            ],
+        ],
+    ],
+
+    // Device identity (My Devices): opaque cookie tokens, hashed in the DB.
+    'devices' => [
+        'enabled' => true,                 // master switch for the device identity layer
+
+        'cookie' => [
+            'name' => 'filament_loginguard_device',
+            'lifetime_days' => 365,
+            'same_site' => 'lax',
+        ],
+
+        'retention_days' => 90,            // drop devices with no sessions after this many days (0 = keep)
+        'max_devices_per_user' => 20,      // hard cap of device identities per account (0 = unlimited)
+
+        'notifications' => [
+            'new_device' => false,         // email the account owner on a new device sign-in
+            'mail' => [
                 'queue' => false,
             ],
         ],
     ],
 
-    'sessions' => [                        // requires SESSION_DRIVER=database
-        'enabled' => true,
-        'concurrent_limit' => null,        // max concurrent sessions per user; null = unlimited
-        'new_device' => ['enabled' => true, 'window_hours' => 24],
+    // IP intelligence (GeoIP enrichment): resolves the login IP against local
+    // MaxMind GeoLite2 databases. Signals only — never blocks. Off by default.
+    'ip_intel' => [
+        'enabled' => false,                // master switch
+        'databases' => [                   // local .mmdb paths; each optional
+            'country' => null,
+            'city' => null,
+            'asn' => null,
+        ],
+        'novelty_window_days' => 90,       // "new country / ASN" lookback window
     ],
 
-    'devices' => [                         // My Devices identity layer
-        'enabled' => true,
-        'retention_days' => 90,
-        'max_devices_per_user' => 20,
-        'notifications' => ['new_device' => false],
-    ],
+    'maintenance' => [
+        'cleanup_attempts' => [           // delete stale attempt records
+            'enabled' => false,           // false = schedule it yourself in routes/console.php
+            'expression' => '0 0 * * *',  // cron expression (default: daily at midnight)
+        ],
 
-    'ip_intel' => [                        // GeoIP enrichment — off by default
-        'enabled' => false,
-        'databases' => ['country' => null, 'city' => null, 'asn' => null],
-        'novelty_window_days' => 90,
+        'cleanup_sessions' => [           // delete expired session rows (needs SESSION_DRIVER=database)
+            'enabled' => false,
+            'expression' => '0 * * * *',  // cron expression (default: hourly)
+        ],
     ],
 
     'pages' => [
-        'attempts' => ['authorize' => null, 'charts' => true, 'export' => true],
-        'sessions' => ['authorize' => null, 'export' => true],
-        'my_devices' => ['enabled' => true, 'user_menu' => true],
+        'attempts' => [
+            'enabled' => true,
+            'slug' => 'login-guard',
+            'cluster' => null,             // optional Filament Cluster class-string to nest the page under
+            'navigation_label' => null,    // null falls back to translations
+            'navigation_icon' => 'heroicon-o-shield-exclamation',
+            'navigation_group' => null,
+            'navigation_sort' => null,
+            'authorize' => null,           // gates everything; the finer keys below win when set
+            'authorize_view' => null,      // viewing the page
+            'authorize_unblock' => null,   // unblock / bulk-unblock actions
+            'stats_widget' => true,        // show the failed-attempts / lockout stats widget
+            'charts' => true,              // show the failure-trend & top-attacked charts
+            'export' => true,              // allow CSV export of the attempts table
+        ],
+
+        'sessions' => [
+            'enabled' => true,             // admin page only; session security uses sessions.enabled
+            'slug' => 'user-sessions',
+            'cluster' => null,
+            'navigation_label' => null,
+            'navigation_icon' => 'heroicon-o-computer-desktop',
+            'navigation_group' => null,
+            'navigation_sort' => null,
+            'authorize' => null,
+            'authorize_view' => null,      // viewing the page
+            'authorize_revoke' => null,    // revoke / bulk-revoke actions
+            'export' => true,              // allow CSV export of the sessions table
+        ],
+
+        // Self-service account security (no admin permission needed).
+        'my_devices' => [
+            'enabled' => true,
+            'slug' => 'my-devices',
+            'user_menu' => true,           // show "My Devices" in the user menu
+            'navigation' => false,         // also list it in the panel navigation
+            'navigation_label' => null,
+            'navigation_icon' => 'heroicon-o-device-phone-mobile',
+            'navigation_group' => null,
+            'navigation_sort' => null,
+        ],
     ],
 ];
 ```
