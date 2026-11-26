@@ -19,6 +19,8 @@ use Laravel\Fortify\FortifyServiceProvider;
 use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
+use PDO;
+use Pdo\Mysql;
 use RyanChandler\BladeCaptureDirective\BladeCaptureDirectiveServiceProvider;
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardServiceProvider;
 
@@ -77,6 +79,12 @@ class TestCase extends Orchestra
                 throw new \InvalidArgumentException('Use a disposable database named loginguard_test or loginguard_test_*.');
             }
 
+            if (! extension_loaded('pdo_mysql')) {
+                throw new \RuntimeException('The MySQL test connection requires pdo_mysql.');
+            }
+
+            $initCommand = PHP_VERSION_ID >= 80400 ? Mysql::ATTR_INIT_COMMAND : PDO::MYSQL_ATTR_INIT_COMMAND;
+
             // Never inherit DB_URL or application credentials: migrate:fresh
             // must only target the explicitly selected disposable test schema.
             $connection = 'loginguard_mysql';
@@ -90,6 +98,11 @@ class TestCase extends Orchestra
                 'charset' => 'utf8mb4',
                 'collation' => 'utf8mb4_unicode_ci',
                 'strict' => true,
+                'options' => [
+                    PDO::ATTR_TIMEOUT => 5,
+                    // Expose blocked schema and row operations before the CI job times out.
+                    $initCommand => 'SET SESSION lock_wait_timeout = 10, SESSION innodb_lock_wait_timeout = 10',
+                ],
             ]);
         }
 

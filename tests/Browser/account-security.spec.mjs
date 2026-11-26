@@ -59,10 +59,13 @@ test('the owner can review and revoke a second remembered browser', async ({
         ).toBeVisible()
         await dialog.getByRole('button', { name: 'Confirm' }).click()
 
-        await expect(
-            page.getByText("Device revoked. It won't be recognized again."),
-        ).toBeVisible()
         await expect(page.getByText('1 signed-in device.')).toBeVisible()
+        await expect(
+            page.getByRole('heading', { name: 'Recently signed out' }),
+        ).toBeVisible()
+        await page.getByRole('button', { name: 'Expand', exact: true }).click()
+        await expect(page.getByText('Signed out · Last used')).toBeVisible()
+
         await remembered.goto('/dashboard')
         await expect(remembered).toHaveURL(/\/login$/)
         await expect(
