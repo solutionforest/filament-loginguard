@@ -4,8 +4,14 @@ All notable changes to `filament-loginguard` will be documented in this file.
 
 ## Unreleased
 
+## v0.8.0 - 2026-11-28
+
+See [Upgrading from 0.7.x to 0.8.0](README.md#from-07x-to-080) in the README.
+
 ### Added
 
+- **Multi-panel and tenancy support.** `FilamentLoginGuardPlugin` gains a per-panel API: `loginGuardPage()`, `userSessionsPage()`, `myDevicesPage(condition, userMenu:)` and the `authorizeAttemptsUsing()` / `authorizeUnblockUsing()` / `authorizeSessionsUsing()` / `authorizeRevokeUsing()` callbacks, which take precedence over the `pages.*.authorize*` config abilities. Authorization is evaluated against the current panel's auth guard. On tenant panels the My Devices user-menu item stays hidden until a tenant is resolved (no `UrlGenerationException` on `/login`).
+- **Non-database session drivers** (Redis/Valkey, file, array) for My Devices. Sessions are destroyed through the configured session handler instead of the `sessions` table, and a device session counts as live while its mapping was seen within `session.lifetime`; the mapping is refreshed at most once a minute while the session is in use.
 - Feature regressions for correct-password lockouts and expiry, independent page/action permissions, actual CSV downloads and values, statistics/chart boundaries, cookie identities, session lifecycle and retention, and real MaxMind fixture lookups. MaxMind's synthetic MIT-licensed test databases are included with upstream attribution; production GeoLite databases are not bundled.
 - Extended CI for strict MySQL 8.4 integration, independent-process concurrency on SQLite and MySQL, Chromium login/device workflows, and downloadable PCOV coverage reports.
 
@@ -20,6 +26,13 @@ All notable changes to `filament-loginguard` will be documented in this file.
 
 ### Fixed
 
+- My Devices no longer queries the `sessions` table on non-database session drivers (it failed when the table did not exist, and showed every device as signed out when it did). The page, **Forget device**, the device cap and cleanup now share one liveness rule, so a device listed as signed in always offers **Sign out** / **This isn't me** and a device listed as signed out can always be forgotten.
+- Stale device↔session mappings (older than `session.lifetime`) are pruned on every session driver by `filament-loginguard:cleanup-devices` and on session rotation; previously they were only pruned with the database driver.
+- Sign-out counts on the file and Redis drivers only include sessions that were still live; their handlers report success for any session id.
+- With the `cookie` session driver, **Sign out** and **Sign out other sessions** are hidden with an explanatory notice instead of reporting a success that cannot happen (the session lives in the other browser's cookie). No `sessions_revoked_others` event is recorded.
+- Page authorization no longer falls back to the default guard's user when a Filament panel is current: a user signed in only on another guard is denied.
+- The MaxMind readers clear PHP's stat cache before checking the database file, so a long-lived Octane worker picks up a replaced `.mmdb` file.
+- The My Devices user-menu item is registered once per panel instead of on every `Filament::serving()` call, so Octane workers no longer accumulate duplicate items.
 - Cookie-identity new-device notifications now honour `devices.notifications`, including its queue setting, and avoid duplicate legacy fingerprint notifications when both systems are enabled.
 - Device caps and cleanup retain live sessions, remove eligible inactive identities, and reject forgetting a device that has become active. Device-cookie deletion now uses the same root path as creation.
 - Device/session association uses the final session ID persisted after Fortify or Filament finishes login and validates each guard's final account. If the pending device was revoked or removed during login, the newly persisted session is discarded; the user must sign in again. New-device mail transport errors are reported without interrupting login or leaving its mapping incomplete.
@@ -34,11 +47,14 @@ All notable changes to `filament-loginguard` will be documented in this file.
 
 ### Changed
 
+- **Breaking:** the My Devices user-menu item and page are only registered on panels that register `FilamentLoginGuardPlugin`. Previously the item was added to every panel. Apps that used My Devices on a panel without the plugin must register the plugin there, optionally `->myDevicesPage()` only (see the README upgrade guide).
 - **Breaking:** the minimum supported Filament version is now 5.8.3 (raised from 5.8.2). 5.8.2 is affected by `PKSA-cnr1-6g7k-bp3d` (multi-factor authentication management actions missing password reauthentication); 5.8.3 is the first 5.x release without a known advisory.
 - **Breaking:** Laravel 11 support is dropped. Laravel 11 is end-of-life and its final releases carry unpatched security advisories (`PKSA-b41t-wbzk-9q51` TokenGuard authentication bypass, among others); the fixes only exist in Laravel 12.68+ / 13.29+. The CI matrix and documented support now cover Laravel 12 and 13 only.
 
 ### Upgrade notes
 
+- Composer constraint: `^0.8`. No configuration keys or tables were renamed; the only new migration creates `filament_loginguard_location_history`.
+- With no `authorize*` callbacks and no `pages.*.authorize*` config abilities, **every authenticated user of a panel that registers the plugin can view login attempts, unblock them, and view/revoke sessions.** Configure them on multi-panel and multi-tenant apps.
 - Existing multi-guard sessions recover their device bindings from surviving session mappings. If an authenticated guard's old mapping has disappeared, a subsequent login transition requires reauthentication instead of preserving an unverifiable session.
 - **The IP intelligence feature is non-breaking.** It is opt-in: with `ip_intel.enabled` left at its `false` default (or with no databases configured), `lookup()` returns `null` and login behaviour is byte-for-byte unchanged. Existing published configs that lack the `ip_intel` key merge the new defaults, so no config republish is required.
 - The new migration only **creates** a new table; no existing table is altered. `php artisan migrate` applies it automatically.
