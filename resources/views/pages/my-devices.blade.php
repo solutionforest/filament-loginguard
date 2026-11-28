@@ -13,6 +13,11 @@
             <p class="flg-my-devices__summary">
                 {{ $this->summary }}
             </p>
+            @unless ($this->canSignOutRemotely())
+                <p class="flg-my-devices__summary" data-flg-notice="remote-sign-out-unavailable">
+                    @lang('filament-loginguard::loginguard.my_devices.notices.remote_sign_out_unavailable')
+                </p>
+            @endunless
         </div>
 
         {{-- ── This device ── --}}
@@ -93,15 +98,17 @@
                                     </x-filament::badge>
                                 @endif
 
-                                <span class="flg-my-devices__sign-out">
-                                    <x-filament::button
-                                        color="gray"
-                                        size="sm"
-                                        wire:click="mountAction('signOutDevice', { device: {{ $device->id }} })"
-                                    >
-                                        @lang('filament-loginguard::loginguard.my_devices.actions.sign_out')
-                                    </x-filament::button>
-                                </span>
+                                @if ($this->canSignOutRemotely())
+                                    <span class="flg-my-devices__sign-out">
+                                        <x-filament::button
+                                            color="gray"
+                                            size="sm"
+                                            wire:click="mountAction('signOutDevice', { device: {{ $device->id }} })"
+                                        >
+                                            @lang('filament-loginguard::loginguard.my_devices.actions.sign_out')
+                                        </x-filament::button>
+                                    </span>
+                                @endif
 
                                 <x-filament::dropdown placement="bottom-end" teleport>
                                     <x-slot name="trigger">
@@ -113,13 +120,15 @@
                                     </x-slot>
 
                                     <x-filament::dropdown.list>
-                                        <x-filament::dropdown.list.item
-                                            wire:click="mountAction('signOutDevice', { device: {{ $device->id }} })"
-                                            icon="heroicon-m-arrow-left-on-rectangle"
-                                            class="sm:hidden"
-                                        >
-                                            @lang('filament-loginguard::loginguard.my_devices.actions.sign_out')
-                                        </x-filament::dropdown.list.item>
+                                        @if ($this->canSignOutRemotely())
+                                            <x-filament::dropdown.list.item
+                                                wire:click="mountAction('signOutDevice', { device: {{ $device->id }} })"
+                                                icon="heroicon-m-arrow-left-on-rectangle"
+                                                class="sm:hidden"
+                                            >
+                                                @lang('filament-loginguard::loginguard.my_devices.actions.sign_out')
+                                            </x-filament::dropdown.list.item>
+                                        @endif
 
                                         <x-filament::dropdown.list.item
                                             color="danger"

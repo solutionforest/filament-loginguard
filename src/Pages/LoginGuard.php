@@ -17,6 +17,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use SolutionForest\FilamentLoginGuard\Filament\Exports\LoginAttemptExporter;
+use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
 use SolutionForest\FilamentLoginGuard\LoginGuardService;
 use SolutionForest\FilamentLoginGuard\Models\LoginAttempt;
 use SolutionForest\FilamentLoginGuard\Support\AuthorizesPages;
@@ -37,7 +38,7 @@ class LoginGuard extends Page implements HasTable
      */
     public static function canAccess(): bool
     {
-        if (! (bool) config('filament-loginguard.pages.attempts.enabled', true)) {
+        if (! static::isEnabled()) {
             return false;
         }
 
@@ -46,7 +47,16 @@ class LoginGuard extends Page implements HasTable
 
     public static function shouldRegisterNavigation(): bool
     {
-        return (bool) config('filament-loginguard.pages.attempts.enabled', true);
+        return static::isEnabled();
+    }
+
+    protected static function isEnabled(): bool
+    {
+        $plugin = FilamentLoginGuardPlugin::current();
+
+        return $plugin !== null
+            ? $plugin->hasLoginGuardPage()
+            : (bool) config('filament-loginguard.pages.attempts.enabled', true);
     }
 
     public static function getDefaultSlug(): string

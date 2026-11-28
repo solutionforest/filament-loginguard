@@ -2,11 +2,13 @@
 
 namespace SolutionForest\FilamentLoginGuard\Models;
 
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use SolutionForest\FilamentLoginGuard\Support\SessionDriver;
 
 /**
  * Maps a device identity to a Laravel session row (sessions stay untouched;
@@ -37,7 +39,46 @@ class DeviceSession extends Model
     {
         return DB::table(filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions'))
             ->select('id')
-            ->where('last_activity', '>=', now()->subMinutes(filament_loginguard_config_int('session.lifetime', 120))->timestamp);
+            ->where('last_activity', '>=', SessionDriver::lifetimeCutoff()->getTimestamp());
+    }
+
+    /**
+     * Restrict mappings to live sessions — the single liveness rule shared by
+     * the My Devices page, forget, the device cap and cleanup.
+     *
+     * Database driver: the mapped session row exists and is fresh. Other
+     * drivers (redis/valkey/file/array/cookie) cannot be queried, so a mapping
+     * is live while its `last_seen_at` is within `session.lifetime`.
+     *
+     * @param  EloquentBuilder<DeviceSession>  $query
+     * @return EloquentBuilder<DeviceSession>
+     */
+    public static function constrainLive(EloquentBuilder $query): EloquentBuilder
+    {
+        if (SessionDriver::usesDatabase()) {
+            $query->whereIn('session_id', self::liveSessionIds());
+        } else {
+            $query->where('last_seen_at', '>=', SessionDriver::lifetimeCutoff());
+        }
+
+        return $query;
+    }
+
+    /**
+     * Restrict mappings to stale ones (the complement of constrainLive()).
+     *
+     * @param  EloquentBuilder<DeviceSession>  $query
+     * @return EloquentBuilder<DeviceSession>
+     */
+    public static function constrainStale(EloquentBuilder $query): EloquentBuilder
+    {
+        if (SessionDriver::usesDatabase()) {
+            $query->whereNotIn('session_id', self::liveSessionIds());
+        } else {
+            $query->where('last_seen_at', '<', SessionDriver::lifetimeCutoff());
+        }
+
+        return $query;
     }
 
     /**

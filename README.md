@@ -49,7 +49,7 @@ Filament LoginGuard adds the missing lockout layer on top of Filament's throttle
 
 ### My Devices (self-service)
 
-Every panel user gets a **My Devices** page in their user menu — no admin permission needed, and the query is always scoped server-side to the authenticated user:
+Every user of a panel that registers `FilamentLoginGuardPlugin` gets a **My Devices** page in their user menu — no admin permission needed, and the query is always scoped server-side to the authenticated user:
 
 - **This device** pinned on top.
 - **Other signed-in devices**, each with **Sign out** and **"This isn't me"** (revokes that device's sessions *and* its identity).
@@ -60,6 +60,8 @@ Device identities are opaque cookie tokens: the browser holds a random token, th
 Multiple session guards can sign in together or in separate requests from the same browser. Each authenticated account retains its device association when login regenerates the session. If an associated device is revoked while another login is in progress, the resulting session is discarded and the browser must sign in again.
 
 **Revocation and “remember me”:** “This isn't me” also rotates Laravel's shared account remember token. Previously issued remember cookies for that account stop working on every device. Other devices' already authenticated sessions remain signed in. Ordinary **Sign out** retains the existing recognition and remember-token behaviour.
+
+**Session drivers:** My Devices works with the `database` driver and with server-side stores such as Redis/Valkey and `file`. Without a database session table, a device session counts as live while it was used within `session.lifetime` (its mapping is refreshed at most once a minute). With the `cookie` driver the session lives in the other browser's cookie and cannot be destroyed server-side: **Sign out** and **Sign out other sessions** are hidden and the page explains why. **This isn't me** still revokes the device identity and rotates the remember token, but the other browser's current cookie session stays valid until it expires.
 
 The device cap removes the oldest inactive identities. Active devices and the identity being registered are preserved, so the account can temporarily exceed the configured cap while all its devices are active.
 
@@ -87,7 +89,7 @@ A foundation layer that resolves the login IP to country / city / ASN / coordina
 | Laravel | 12, 13 |
 | Filament | 5.8.3 or later |
 | Database | Any Laravel-supported database (MySQL / MariaDB, PostgreSQL, SQLite, SQL Server) |
-| Session driver | `database`, for session management and My Devices |
+| Session driver | `database` for the admin Sessions page; My Devices also supports Redis/Valkey, `file` and `array` (`cookie`: no remote sign-out) |
 | Queue | Optional — for lockout emails and CSV export |
 | Optional | `geoip2/geoip2` + MaxMind GeoLite2 files, for IP intelligence |
 
@@ -433,6 +435,21 @@ return [
 Gate::define('view-filament-loginguard', fn (User $user) => $user->can('access-admin-settings'));
 ```
 
+**Per panel**, configure the plugin instead. Callbacks receive the user of the panel's own auth guard and take precedence over the config abilities:
+
+```php
+FilamentLoginGuardPlugin::make()
+    ->loginGuardPage()                 // attempts page (default: pages.attempts.enabled)
+    ->userSessionsPage(false)          // hide the sessions page on this panel
+    ->myDevicesPage(true, userMenu: true)
+    ->authorizeAttemptsUsing(fn (User $user): bool => $user->isSuperAdmin())
+    ->authorizeUnblockUsing(fn (User $user): bool => $user->isSuperAdmin())
+    ->authorizeSessionsUsing(fn (User $user): bool => $user->isSuperAdmin())
+    ->authorizeRevokeUsing(fn (User $user): bool => $user->isSuperAdmin());
+```
+
+A member-facing panel that should only offer My Devices registers `FilamentLoginGuardPlugin::make()->loginGuardPage(false)->userSessionsPage(false)`.
+
 ## Maintenance
 
 Delete stale, expired attempt records (outside the decay window with no active lock):
@@ -522,7 +539,7 @@ CI currently exercises SQLite, MySQL and Chromium. PostgreSQL, SQL Server, Maria
 ## Limits
 
 - **Email lockouts can be abused as a denial-of-service vector.** An attacker who knows an account's email can deliberately fail logins to lock it out. Mitigate with self-service unlock, `whitelist.emails` for critical accounts, and a moderate `initial_minutes`. Behind a proxy/CDN, set `lockout.trusted_proxies` — otherwise everyone behind the proxy shares one IP.
-- **Session management and My Devices require `SESSION_DRIVER=database`.**
+- **The admin Sessions page requires `SESSION_DRIVER=database`.** My Devices works with any server-side session store; the `cookie` driver cannot sign other browsers out.
 - **CSV export needs Filament's export tables** (`exports`, `job_batches`, `notifications`) and a queue worker.
 - **IP intelligence is opt-in and fail-safe**, and needs `geoip2/geoip2` plus MaxMind database files, which MaxMind's licence does not permit us to redistribute.
 
@@ -538,6 +555,28 @@ Planned features, roughly in the order they are likely to land. Suggestions and 
 - [ ] **Slack / Telegram / Webhook notifications** — deliver lockout alerts beyond email.
 - [ ] **Cloudflare integration** — push lockouts to the edge.
 - [x] **CSV export** — export attempts and sessions for compliance audits. *(shipped in v0.6.0)*
+
+## Upgrading
+
+### From 0.7.x to 0.8.0
+
+1. Update the constraint and run the migrations:
+
+   ```bash
+   composer require solution-forest/filament-loginguard:"^0.8"
+   php artisan migrate
+   ```
+
+   No configuration keys or tables were renamed. The only new migration creates the `filament_loginguard_location_history` table; the only other migration change names the device identity unique index explicitly for fresh MySQL installs, and existing indexes do not need renaming. The only new config section is `ip_intel` (disabled by default), so existing published configs keep working without a republish.
+
+2. **Behaviour change: My Devices is now per panel.** The My Devices page and its user-menu item only appear on panels that register `FilamentLoginGuardPlugin`; 0.7.x added the item to every panel. If you added `MyDevices` to a panel manually, register the plugin on that panel instead — for a My Devices-only panel use `FilamentLoginGuardPlugin::make()->loginGuardPage(false)->userSessionsPage(false)`, and use `->myDevicesPage(true, userMenu: false)` to keep the page without the menu item.
+
+3. **New per-panel API.** `loginGuardPage()`, `userSessionsPage()`, `myDevicesPage()` and the `authorizeAttemptsUsing()` / `authorizeUnblockUsing()` / `authorizeSessionsUsing()` / `authorizeRevokeUsing()` callbacks configure each panel separately (see [Authorization](#authorization)). Authorization uses the current panel's auth guard only.
+
+   > [!WARNING]
+   > With **no** `authorize*` callbacks and **no** `pages.*.authorize*` config abilities, **every authenticated user of a panel that registers the plugin can view login attempts, unblock them, and view and revoke sessions.** On multi-panel and multi-tenant apps, configure the `authorize*` callbacks (or config abilities) on every panel that registers the plugin.
+
+4. **Session drivers.** My Devices now supports non-database session stores (Redis/Valkey, `file`, `array`). With the `cookie` driver, signing out other browsers is impossible, so those actions are hidden with an explanatory notice. The admin Sessions page still requires the `database` driver.
 
 ## Changelog and versions
 

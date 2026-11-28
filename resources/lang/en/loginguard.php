@@ -174,6 +174,9 @@ return [
             'forgotten' => 'Device forgotten. Its next sign-in will be treated as a new device.',
             'signed_out_others' => 'All other sessions were signed out.',
         ],
+        'notices' => [
+            'remote_sign_out_unavailable' => 'Signing out other devices is unavailable because sessions are stored in browser cookies. Use "This isn\'t me" to stop recognizing a device, and change your password if you suspect misuse.',
+        ],
         'empty' => [
             'only_here' => "You're only signed in here.",
             'title' => 'No devices',

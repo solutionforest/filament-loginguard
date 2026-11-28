@@ -2,14 +2,17 @@
 
 namespace SolutionForest\FilamentLoginGuard\Support;
 
+use Closure;
+use Filament\Facades\Filament;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Auth;
+use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
 
 final class AuthorizesPages
 {
     /**
      * A blank ability allows access. A configured ability is checked against
-     * the current user's authorization rules.
+     * the current panel's guard user (the default guard only outside a panel).
      */
     public static function allows(?string $ability): bool
     {
@@ -17,7 +20,7 @@ final class AuthorizesPages
             return true;
         }
 
-        $user = Auth::user();
+        $user = self::currentUser();
 
         return $user instanceof Authenticatable
             && method_exists($user, 'can')
@@ -25,21 +28,32 @@ final class AuthorizesPages
     }
 
     /**
-     * Whether the current user may VIEW the attempts page. Falls back to the
-     * generic `authorize` ability when no view-specific ability is set.
+     * Whether the current user may VIEW the attempts page. Checks any per-panel
+     * plugin callback first, then falls back to `pages.attempts.authorize_view` / `authorize`.
      */
     public static function canViewAttempts(): bool
     {
+        $callback = FilamentLoginGuardPlugin::current()?->getAuthorizeAttemptsCallback();
+
+        if ($callback instanceof Closure) {
+            return self::evaluateCallback($callback);
+        }
+
         return self::allows(self::ability('pages.attempts.authorize_view', 'pages.attempts.authorize'));
     }
 
     /**
-     * Whether the current user may UNBLOCK locked attempts. Falls back to the
-     * view ability when no unblock-specific ability is set, so a single
-     * `authorize` key keeps granting full control.
+     * Whether the current user may UNBLOCK locked attempts. Checks any per-panel
+     * plugin callback first, then falls back to config abilities.
      */
     public static function canUnblockAttempts(): bool
     {
+        $callback = FilamentLoginGuardPlugin::current()?->getAuthorizeUnblockCallback();
+
+        if ($callback instanceof Closure) {
+            return self::evaluateCallback($callback);
+        }
+
         return self::allows(self::ability('pages.attempts.authorize_unblock', 'pages.attempts.authorize_view', 'pages.attempts.authorize'));
     }
 
@@ -48,6 +62,12 @@ final class AuthorizesPages
      */
     public static function canViewSessions(): bool
     {
+        $callback = FilamentLoginGuardPlugin::current()?->getAuthorizeSessionsCallback();
+
+        if ($callback instanceof Closure) {
+            return self::evaluateCallback($callback);
+        }
+
         return self::allows(self::ability('pages.sessions.authorize_view', 'pages.sessions.authorize'));
     }
 
@@ -56,7 +76,36 @@ final class AuthorizesPages
      */
     public static function canRevokeSessions(): bool
     {
+        $callback = FilamentLoginGuardPlugin::current()?->getAuthorizeRevokeCallback();
+
+        if ($callback instanceof Closure) {
+            return self::evaluateCallback($callback);
+        }
+
         return self::allows(self::ability('pages.sessions.authorize_revoke', 'pages.sessions.authorize_view', 'pages.sessions.authorize'));
+    }
+
+    /**
+     * @param  Closure(Authenticatable): bool  $callback
+     */
+    private static function evaluateCallback(Closure $callback): bool
+    {
+        $user = self::currentUser();
+
+        return $user instanceof Authenticatable && (bool) $callback($user);
+    }
+
+    /**
+     * Inside a panel only that panel's guard counts: a user signed in on
+     * another guard must never be authorized for this panel's pages.
+     */
+    private static function currentUser(): ?Authenticatable
+    {
+        if (Filament::getCurrentPanel() !== null) {
+            return Filament::auth()->user();
+        }
+
+        return Auth::user();
     }
 
     /**

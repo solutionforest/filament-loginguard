@@ -10,12 +10,14 @@ use Filament\Support\Enums\Width;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
 use SolutionForest\FilamentLoginGuard\Models\Device;
 use SolutionForest\FilamentLoginGuard\Models\DeviceSession;
 use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 use SolutionForest\FilamentLoginGuard\Services\DeviceManager;
 use SolutionForest\FilamentLoginGuard\Support\DeviceCookie;
 use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
+use SolutionForest\FilamentLoginGuard\Support\SessionDriver;
 
 /**
  * Self-service account security: the devices (and their sessions) that belong
@@ -44,7 +46,12 @@ class MyDevices extends Page
 
     public static function canAccess(): bool
     {
-        return (bool) config('filament-loginguard.pages.my_devices.enabled', true)
+        $plugin = FilamentLoginGuardPlugin::current();
+        $pageEnabled = $plugin !== null
+            ? $plugin->hasMyDevicesPage()
+            : (bool) config('filament-loginguard.pages.my_devices.enabled', true);
+
+        return $pageEnabled
             && (bool) config('filament-loginguard.devices.enabled', true)
             && Filament::auth()->user() !== null;
     }
@@ -202,21 +209,17 @@ class MyDevices extends Page
     }
 
     /**
-     * Live session count for a device (rows that still exist and are fresh).
+     * Live session count for a device (see DeviceSession::constrainLive()).
      */
     public function liveSessionCount(Device $device): int
     {
-        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
-        $cutoff = now()->subMinutes(filament_loginguard_config_int('session.lifetime', 120))->getTimestamp();
-
-        return $device->sessions()
-            ->join($sessionsTable, 'filament_loginguard_device_sessions.session_id', '=', $sessionsTable . '.id')
-            ->where($sessionsTable . '.last_activity', '>=', $cutoff)
-            ->count();
+        return $device->liveSessionCount();
     }
 
     /**
      * Device ids (from the given set) that still have a live session — one query.
+     * Uses the same liveness rule as Device::hasActiveSessions(), so a device
+     * shown as "previous" can always be forgotten and vice versa.
      *
      * @param  Collection<int, Device>  $devices
      * @return array<array-key, int>
@@ -227,17 +230,22 @@ class MyDevices extends Page
             return [];
         }
 
-        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
-        $cutoff = now()->subMinutes(filament_loginguard_config_int('session.lifetime', 120))->getTimestamp();
-
-        return DeviceSession::query()
+        return DeviceSession::constrainLive(DeviceSession::query())
             ->whereIn('device_id', $devices->pluck('id')->all())
-            ->join($sessionsTable, 'filament_loginguard_device_sessions.session_id', '=', $sessionsTable . '.id')
-            ->where($sessionsTable . '.last_activity', '>=', $cutoff)
             ->distinct()
             ->pluck('device_id')
             ->map(fn ($id): int => filament_loginguard_intval($id))
             ->all();
+    }
+
+    /**
+     * Whether this session driver lets us sign out another browser. With the
+     * cookie driver the session lives in that browser's cookie, so remote
+     * sign-out is impossible and the actions are hidden.
+     */
+    public function canSignOutRemotely(): bool
+    {
+        return SessionDriver::canDestroyOtherSessions();
     }
 
     protected function getHeaderActions(): array
@@ -251,7 +259,7 @@ class MyDevices extends Page
                 ->modalDescription(fn (): string => filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.sign_out_others_confirm', [
                     'count' => $this->otherSessionCount(),
                 ]))
-                ->visible(fn (): bool => $this->otherSessionCount() > 0)
+                ->visible(fn (): bool => $this->canSignOutRemotely() && $this->otherSessionCount() > 0)
                 ->action(function (): void {
                     [$userType, $guard, $identifier] = $this->currentUserContext();
 
@@ -319,6 +327,7 @@ class MyDevices extends Page
             ->requiresConfirmation()
             ->modalHeading(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.sign_out_heading'))
             ->modalDescription(filament_loginguard_trans('filament-loginguard::loginguard.my_devices.actions.sign_out_description'))
+            ->visible(fn (): bool => $this->canSignOutRemotely())
             ->action(function (array $arguments): void {
                 $device = $this->actionableDevice($arguments);
 
@@ -403,7 +412,7 @@ class MyDevices extends Page
         $deviceIds = $this->ownedDevicesQuery($guard, $userType, $identifier)
             ->pluck('id');
 
-        return DeviceSession::query()
+        return DeviceSession::constrainLive(DeviceSession::query())
             ->whereIn('device_id', $deviceIds)
             ->where('session_id', '!=', $currentSessionId)
             ->count();

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Session\Store;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,7 @@ use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
 use SolutionForest\FilamentLoginGuard\Notifications\NewDeviceLoginNotification;
 use SolutionForest\FilamentLoginGuard\Support\DeviceCookie;
 use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
+use SolutionForest\FilamentLoginGuard\Support\SessionDriver;
 
 /**
  * Owns the device identity layer: resolving or creating the device behind a
@@ -124,6 +126,21 @@ class DeviceManager
     }
 
     /**
+     * Mark every mapping of a session as seen now (liveness heartbeat for
+     * session drivers other than the database).
+     */
+    public function touchSession(string $sessionId): void
+    {
+        if ($sessionId === '') {
+            return;
+        }
+
+        DeviceSession::query()
+            ->where('session_id', $sessionId)
+            ->update(['last_seen_at' => Carbon::now()]);
+    }
+
+    /**
      * Associate every guard authenticated in a persisted session together.
      * If an identity was removed or revoked during login, reject the session.
      *
@@ -145,10 +162,19 @@ class DeviceManager
                 }
             }
 
-            if ($previousSessionId !== null && $previousSessionId !== $sessionId && config('session.driver') === 'database') {
-                $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
-                DeviceSession::query()->where('session_id', $previousSessionId)
-                    ->whereNotIn('session_id', DB::table($sessionsTable)->select('id'))
+            if (SessionDriver::usesDatabase()) {
+                if ($previousSessionId !== null && $previousSessionId !== $sessionId) {
+                    $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
+                    DeviceSession::query()->where('session_id', $previousSessionId)
+                        ->whereNotIn('session_id', DB::table($sessionsTable)->select('id'))
+                        ->delete();
+                }
+            } else {
+                // Session stores other than the database cannot be queried, so
+                // rotated-away and expired sessions are pruned by mapping age.
+                DeviceSession::constrainStale(DeviceSession::query())
+                    ->whereIn('device_id', $lockedDevices->keys()->all())
+                    ->where('session_id', '!=', $sessionId)
                     ->delete();
             }
 
@@ -182,7 +208,10 @@ class DeviceManager
      */
     public function signOutDevice(Device $device, string $currentSessionId): int
     {
-        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
+        // Cookie sessions live in the other browser; nothing can be destroyed.
+        if (! SessionDriver::canDestroyOtherSessions()) {
+            return 0;
+        }
 
         $sessionIds = $device->sessions()
             ->pluck('session_id')
@@ -193,17 +222,18 @@ class DeviceManager
             return 0;
         }
 
-        // Delete the real Laravel session rows (that is what "sign out" means),
-        // then the stale mappings.
-        $deleted = DB::table($sessionsTable)
-            ->whereIn('id', $sessionIds->all())
-            ->delete();
+        /** @var list<string> $ids */
+        $ids = array_values($sessionIds->all());
+
+        // Delete the real Laravel session rows (or destroy via session handler on Redis/Valkey/file),
+        // then remove the stale mappings.
+        $deleted = $this->destroySessions($ids);
 
         DeviceSession::query()
-            ->whereIn('session_id', $sessionIds->all())
+            ->whereIn('session_id', $ids)
             ->delete();
 
-        return (int) $deleted;
+        return $deleted;
     }
 
     /**
@@ -294,6 +324,11 @@ class DeviceManager
      */
     public function signOutOthers(Authenticatable $user, string $guard, string $userType, string $identifier, string $currentSessionId): int
     {
+        // Cookie sessions live in the other browsers; never report a fake success.
+        if (! SessionDriver::canDestroyOtherSessions()) {
+            return 0;
+        }
+
         $deviceIds = $this->devicesFor($guard, $userType, $identifier)
             ->pluck('id');
 
@@ -306,23 +341,62 @@ class DeviceManager
             return 0;
         }
 
-        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
+        /** @var list<string> $ids */
+        $ids = array_values($mappings->all());
 
-        // "Sign out" means deleting the real Laravel session rows, then the
-        // stale mappings. Device identities are preserved.
-        $deleted = DB::table($sessionsTable)
-            ->whereIn('id', $mappings->all())
-            ->delete();
+        // "Sign out" means destroying the real Laravel sessions, then removing
+        // the stale mappings. Device identities are preserved.
+        $deleted = $this->destroySessions($ids);
 
         DeviceSession::query()
-            ->whereIn('session_id', $mappings->all())
+            ->whereIn('session_id', $ids)
             ->delete();
 
         SecurityEvent::record(SecurityEvent::TYPE_SESSIONS_REVOKED_OTHERS, null, null, is_numeric($identifier) ? (int) $identifier : null, $guard, null, [
             'count' => $deleted,
         ]);
 
-        return (int) $deleted;
+        return $deleted;
+    }
+
+    /**
+     * Destroy Laravel sessions across any configured session driver (database, redis/valkey, file, array).
+     * Returns how many live sessions were ended.
+     *
+     * @param  list<string>  $sessionIds
+     */
+    private function destroySessions(array $sessionIds): int
+    {
+        if (SessionDriver::usesDatabase()) {
+            $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
+
+            return (int) DB::table($sessionsTable)
+                ->whereIn('id', $sessionIds)
+                ->delete();
+        }
+
+        $store = app('session.store');
+        $destroyed = 0;
+
+        if (! $store instanceof Store) {
+            return 0;
+        }
+
+        // Handlers such as file and redis report success for unknown ids, so
+        // only sessions whose mapping was still live count as signed out.
+        $live = DeviceSession::constrainLive(DeviceSession::query())
+            ->whereIn('session_id', $sessionIds)
+            ->pluck('session_id')
+            ->flip();
+        $handler = $store->getHandler();
+
+        foreach ($sessionIds as $sessionId) {
+            if ($handler->destroy($sessionId) && $live->has($sessionId)) {
+                $destroyed++;
+            }
+        }
+
+        return $destroyed;
     }
 
     /**
@@ -382,12 +456,7 @@ class DeviceManager
             $devices->where('id', '!=', $currentDeviceId);
         }
 
-        $devices->whereDoesntHave('sessions', function (Builder $query): void {
-            // Other session drivers cannot be checked against the database.
-            if (config('session.driver') === 'database') {
-                $query->whereIn('session_id', DeviceSession::liveSessionIds());
-            }
-        });
+        $devices->whereNotIn('id', DeviceSession::constrainLive(DeviceSession::query())->select('device_id'));
 
         $ids = (clone $devices)->oldest('last_seen_at')->oldest('id')->limit($excess)->pluck('id');
         if ($ids->isEmpty()) {
@@ -402,16 +471,13 @@ class DeviceManager
     }
 
     /**
-     * Remove device↔session mappings whose session no longer exists, and
-     * devices that are beyond the retention window with no live sessions.
+     * Remove stale device↔session mappings (dead or expired database sessions;
+     * mappings older than `session.lifetime` on other drivers), and devices
+     * that are beyond the retention window with no live sessions.
      */
     public function cleanup(): void
     {
-        if (config('session.driver') === 'database') {
-            DeviceSession::query()
-                ->whereNotIn('session_id', DeviceSession::liveSessionIds())
-                ->delete();
-        }
+        DeviceSession::constrainStale(DeviceSession::query())->delete();
 
         $retentionDays = filament_loginguard_config_int('filament-loginguard.devices.retention_days', 90);
 
