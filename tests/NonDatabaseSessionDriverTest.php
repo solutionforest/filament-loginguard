@@ -8,7 +8,6 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\FileSessionHandler;
 use Illuminate\Session\Store;
-use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
 use SolutionForest\FilamentLoginGuard\Models\Device;
@@ -82,7 +81,8 @@ function mapSession(Device $device, string $sessionId, Carbon $lastSeenAt): Devi
 
 it('renders My Devices without a sessions table on the array driver and signs a live device out', function (): void {
     useSessionDriver('array');
-    Schema::drop('sessions');
+    // No sessions table, without DDL (MySQL DDL would implicitly commit the test transaction).
+    config()->set('filament-loginguard.sessions.table', 'missing_sessions_table');
 
     /** @var User $user */
     $user = UserFactory::new()->create();
