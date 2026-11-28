@@ -4,7 +4,9 @@ use Filament\Facades\Filament;
 use Filament\Panel;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
 use SolutionForest\FilamentLoginGuard\Models\Device;
@@ -237,3 +239,63 @@ it('reloads MaxmindIpIntelligence readers cleanly when config paths change under
 
     expect($intel->lookup('8.8.8.8'))->toBeNull();
 });
+
+it('never falls back to the default guard user while a panel is current', function (): void {
+    config()->set('auth.guards.staff', [
+        'driver' => 'session',
+        'provider' => 'users',
+    ]);
+
+    /** @var User $webUser */
+    $webUser = UserFactory::new()->create();
+
+    $staffPanel = Panel::make()
+        ->id('staff-only')
+        ->path('staff-only')
+        ->authGuard('staff')
+        ->plugin(FilamentLoginGuardPlugin::make()->authorizeAttemptsUsing(fn (Authenticatable $user): bool => true));
+
+    Filament::registerPanel($staffPanel);
+    Filament::setCurrentPanel($staffPanel);
+
+    // Signed in on `web` only; the panel's `staff` guard is a guest.
+    Auth::guard('web')->login($webUser);
+    config()->set('filament-loginguard.pages.sessions.authorize', 'view-sessions');
+    Gate::define('view-sessions', fn (): bool => true);
+
+    expect(Auth::user())->not->toBeNull()
+        ->and(Auth::guard('staff')->user())->toBeNull()
+        ->and(AuthorizesPages::canViewAttempts())->toBeFalse()
+        ->and(AuthorizesPages::canViewSessions())->toBeFalse();
+});
+
+it('detects a MaxMind database replaced in place by another process in a long-lived worker', function (): void {
+    $fixtures = __DIR__ . '/Fixtures/MaxMind';
+    $directory = sys_get_temp_dir() . '/flg-mmdb-' . bin2hex(random_bytes(4));
+    mkdir($directory);
+    $path = $directory . '/GeoLite2-Country.mmdb';
+    copy($fixtures . '/GeoLite2-Country-Test.mmdb', $path);
+    touch($path, time() - 3600);
+
+    config()->set('filament-loginguard.ip_intel.enabled', true);
+    config()->set('filament-loginguard.ip_intel.databases.country', $path);
+
+    $intel = new MaxmindIpIntelligence;
+    expect($intel->lookup('89.160.20.113')?->country)->toBe('SE');
+
+    // Atomically replace the file from another process, like geoipupdate or a
+    // deploy next to an Octane worker, so PHP's own stat cache is not cleared.
+    // The ASN database cannot answer country lookups. Prime PHP's stat cache
+    // with the old file first, as a worker that recently touched it would.
+    // (exec() would clear the stat cache itself, proc_open() does not.)
+    $command = ['sh', '-c', sprintf('cp %1$s %2$s.new && mv %2$s.new %2$s', escapeshellarg($fixtures . '/GeoLite2-ASN-Test.mmdb'), escapeshellarg($path))];
+    filemtime($path);
+    $process = proc_open($command, [], $pipes);
+    $exitCode = is_resource($process) ? proc_close($process) : -1;
+    $afterReplacement = $intel->lookup('89.160.20.113');
+
+    expect($exitCode)->toBe(0)
+        ->and($afterReplacement)->toBeNull();
+
+    (new Filesystem)->deleteDirectory($directory);
+})->skipOnWindows();

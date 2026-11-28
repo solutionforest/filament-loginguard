@@ -170,6 +170,12 @@ class MaxmindIpIntelligence implements IpIntelligence
 
         $path = config("filament-loginguard.ip_intel.databases.{$kind}");
 
+        if (is_string($path) && $path !== '') {
+            // Long-lived (Octane) workers would otherwise keep a cached stat
+            // and never notice a database file replaced or removed in place.
+            clearstatcache(true, $path);
+        }
+
         if (! is_string($path) || $path === '' || ! is_file($path)) {
             unset($this->readers[$kind]);
 

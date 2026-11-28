@@ -12,7 +12,7 @@ final class AuthorizesPages
 {
     /**
      * A blank ability allows access. A configured ability is checked against
-     * the current panel's authenticated user (falling back to the default guard).
+     * the current panel's guard user (the default guard only outside a panel).
      */
     public static function allows(?string $ability): bool
     {
@@ -95,16 +95,14 @@ final class AuthorizesPages
         return $user instanceof Authenticatable && (bool) $callback($user);
     }
 
+    /**
+     * Inside a panel only that panel's guard counts: a user signed in on
+     * another guard must never be authorized for this panel's pages.
+     */
     private static function currentUser(): ?Authenticatable
     {
-        $panel = Filament::getCurrentPanel();
-
-        if ($panel !== null) {
-            $panelUser = Filament::auth()->user();
-
-            if ($panelUser instanceof Authenticatable) {
-                return $panelUser;
-            }
+        if (Filament::getCurrentPanel() !== null) {
+            return Filament::auth()->user();
         }
 
         return Auth::user();
