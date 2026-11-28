@@ -7,6 +7,7 @@ use Filament\Support\Assets\Css;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\Support\Facades\FilamentIcon;
 use Illuminate\Auth\Events\Attempting;
+use Illuminate\Auth\Events\Authenticated;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Scheduling\Schedule;
@@ -109,6 +110,7 @@ class FilamentLoginGuardServiceProvider extends PackageServiceProvider
         $events->listen(Attempting::class, [AuthenticationListener::class, 'handleAttempting']);
         $events->listen(Failed::class, [AuthenticationListener::class, 'handleFailed']);
         $events->listen(Login::class, [AuthenticationListener::class, 'handleLogin']);
+        $events->listen(Authenticated::class, [AuthenticationListener::class, 'handleAuthenticated']);
         $events->listen(RequestHandled::class, [AuthenticationListener::class, 'handleRequestHandled']);
 
         $this->registerScheduledTasks();

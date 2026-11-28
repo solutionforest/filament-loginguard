@@ -3,12 +3,14 @@
 namespace SolutionForest\FilamentLoginGuard\Listeners;
 
 use Illuminate\Auth\Events\Attempting;
+use Illuminate\Auth\Events\Authenticated;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\SessionGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Http\Events\RequestHandled;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -21,6 +23,7 @@ use SolutionForest\FilamentLoginGuard\Services\DeviceManager;
 use SolutionForest\FilamentLoginGuard\Services\IpIntelligence;
 use SolutionForest\FilamentLoginGuard\Support\IpAddress;
 use SolutionForest\FilamentLoginGuard\Support\ParsesUserAgent;
+use SolutionForest\FilamentLoginGuard\Support\SessionDriver;
 use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class AuthenticationListener
@@ -30,6 +33,11 @@ class AuthenticationListener
     private const SESSION_BINDINGS = 'filament-loginguard.device-bindings';
 
     private const PREVIOUS_SESSION = 'filament-loginguard.previous-session';
+
+    private const MAPPINGS_TOUCHED_AT = 'filament-loginguard.mappings-touched-at';
+
+    /** Minimum seconds between two heartbeats of the same session's mappings. */
+    private const HEARTBEAT_SECONDS = 60;
 
     public function __construct(
         protected LoginGuardService $service,
@@ -245,6 +253,35 @@ class AuthenticationListener
         // mapping after StartSession loaded this request's authenticated guards.
         $bindings[$device->guard] = $this->deviceManager->sessionBinding($device);
         $session->put(self::SESSION_BINDINGS, $bindings);
+    }
+
+    /**
+     * Non-database session stores cannot be queried, so a mapping's
+     * `last_seen_at` is its liveness signal. Refresh it (at most once a minute,
+     * throttled through the session itself) while the session is in use, so an
+     * active session is never treated as expired and pruned.
+     */
+    public function handleAuthenticated(Authenticated $event): void
+    {
+        if (SessionDriver::usesDatabase() || ! (bool) config('filament-loginguard.devices.enabled', true)) {
+            return;
+        }
+
+        $request = request();
+        if (! $request->hasSession()) {
+            return;
+        }
+
+        $session = $request->session();
+        $now = Carbon::now()->getTimestamp();
+        $touchedAt = $session->get(self::MAPPINGS_TOUCHED_AT);
+
+        if (is_int($touchedAt) && $touchedAt <= $now && $now - $touchedAt < self::HEARTBEAT_SECONDS) {
+            return;
+        }
+
+        $session->put(self::MAPPINGS_TOUCHED_AT, $now);
+        $this->deviceManager->touchSession($session->getId());
     }
 
     public function handleRequestHandled(RequestHandled $event): void

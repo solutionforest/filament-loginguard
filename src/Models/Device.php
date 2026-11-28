@@ -55,12 +55,15 @@ class Device extends Model
      */
     public function hasActiveSessions(): bool
     {
-        $sessions = $this->sessions();
-        if (config('session.driver') === 'database') {
-            $sessions->whereIn('session_id', DeviceSession::liveSessionIds());
-        }
+        return $this->liveSessionCount() > 0;
+    }
 
-        return $sessions->exists();
+    /**
+     * Number of live sessions mapped to the device (see DeviceSession::constrainLive()).
+     */
+    public function liveSessionCount(): int
+    {
+        return DeviceSession::constrainLive($this->sessions()->getQuery())->count();
     }
 
     /**
