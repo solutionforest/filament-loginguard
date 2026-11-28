@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Session\Store;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -182,8 +183,6 @@ class DeviceManager
      */
     public function signOutDevice(Device $device, string $currentSessionId): int
     {
-        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
-
         $sessionIds = $device->sessions()
             ->pluck('session_id')
             ->reject(fn (string $sessionId): bool => $sessionId === $currentSessionId)
@@ -193,17 +192,18 @@ class DeviceManager
             return 0;
         }
 
-        // Delete the real Laravel session rows (that is what "sign out" means),
-        // then the stale mappings.
-        $deleted = DB::table($sessionsTable)
-            ->whereIn('id', $sessionIds->all())
-            ->delete();
+        /** @var list<string> $ids */
+        $ids = array_values($sessionIds->all());
+
+        // Delete the real Laravel session rows (or destroy via session handler on Redis/Valkey/file),
+        // then remove the stale mappings.
+        $deleted = $this->destroySessions($ids);
 
         DeviceSession::query()
-            ->whereIn('session_id', $sessionIds->all())
+            ->whereIn('session_id', $ids)
             ->delete();
 
-        return (int) $deleted;
+        return $deleted;
     }
 
     /**
@@ -306,23 +306,53 @@ class DeviceManager
             return 0;
         }
 
-        $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
+        /** @var list<string> $ids */
+        $ids = array_values($mappings->all());
 
-        // "Sign out" means deleting the real Laravel session rows, then the
-        // stale mappings. Device identities are preserved.
-        $deleted = DB::table($sessionsTable)
-            ->whereIn('id', $mappings->all())
-            ->delete();
+        // "Sign out" means destroying the real Laravel sessions, then removing
+        // the stale mappings. Device identities are preserved.
+        $deleted = $this->destroySessions($ids);
 
         DeviceSession::query()
-            ->whereIn('session_id', $mappings->all())
+            ->whereIn('session_id', $ids)
             ->delete();
 
         SecurityEvent::record(SecurityEvent::TYPE_SESSIONS_REVOKED_OTHERS, null, null, is_numeric($identifier) ? (int) $identifier : null, $guard, null, [
             'count' => $deleted,
         ]);
 
-        return (int) $deleted;
+        return $deleted;
+    }
+
+    /**
+     * Destroy Laravel sessions across any configured session driver (database, redis/valkey, file, array).
+     *
+     * @param  list<string>  $sessionIds
+     */
+    private function destroySessions(array $sessionIds): int
+    {
+        if (config('session.driver') === 'database') {
+            $sessionsTable = filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions');
+
+            return (int) DB::table($sessionsTable)
+                ->whereIn('id', $sessionIds)
+                ->delete();
+        }
+
+        $store = app('session.store');
+        $destroyed = 0;
+
+        if ($store instanceof Store) {
+            $handler = $store->getHandler();
+
+            foreach ($sessionIds as $sessionId) {
+                if ($handler->destroy($sessionId)) {
+                    $destroyed++;
+                }
+            }
+        }
+
+        return $destroyed;
     }
 
     /**

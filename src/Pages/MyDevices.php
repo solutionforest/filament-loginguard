@@ -10,6 +10,7 @@ use Filament\Support\Enums\Width;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
 use SolutionForest\FilamentLoginGuard\Models\Device;
 use SolutionForest\FilamentLoginGuard\Models\DeviceSession;
 use SolutionForest\FilamentLoginGuard\Models\SecurityEvent;
@@ -44,7 +45,12 @@ class MyDevices extends Page
 
     public static function canAccess(): bool
     {
-        return (bool) config('filament-loginguard.pages.my_devices.enabled', true)
+        $plugin = FilamentLoginGuardPlugin::current();
+        $pageEnabled = $plugin !== null
+            ? $plugin->hasMyDevicesPage()
+            : (bool) config('filament-loginguard.pages.my_devices.enabled', true);
+
+        return $pageEnabled
             && (bool) config('filament-loginguard.devices.enabled', true)
             && Filament::auth()->user() !== null;
     }

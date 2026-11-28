@@ -18,8 +18,16 @@ use SolutionForest\FilamentLoginGuard\Support\IpAddress;
  */
 class MaxmindIpIntelligence implements IpIntelligence
 {
-    /** @var array<string, Reader|null> cached readers keyed by database kind */
+    /** @var array<string, array{path: string, mtime: int|false, reader: Reader|null}> cached readers keyed by database kind */
     private array $readers = [];
+
+    /**
+     * Drop cached database handles (useful in long-lived Octane workers or tests).
+     */
+    public function flushReaders(): void
+    {
+        $this->readers = [];
+    }
 
     public function lookup(string $ip): ?IpLocation
     {
@@ -156,25 +164,38 @@ class MaxmindIpIntelligence implements IpIntelligence
      */
     private function reader(string $kind): ?Reader
     {
-        if (array_key_exists($kind, $this->readers)) {
-            return $this->readers[$kind];
-        }
-
         if (! class_exists(Reader::class)) {
-            return $this->readers[$kind] = null;
+            return null;
         }
 
         $path = config("filament-loginguard.ip_intel.databases.{$kind}");
 
         if (! is_string($path) || $path === '' || ! is_file($path)) {
-            return $this->readers[$kind] = null;
+            unset($this->readers[$kind]);
+
+            return null;
+        }
+
+        $mtime = @filemtime($path);
+        $cached = $this->readers[$kind] ?? null;
+
+        if ($cached !== null && $cached['path'] === $path && $cached['mtime'] === $mtime) {
+            return $cached['reader'];
         }
 
         try {
-            return $this->readers[$kind] = new Reader($path);
+            $reader = new Reader($path);
         } catch (\Throwable) {
-            return $this->readers[$kind] = null;
+            $reader = null;
         }
+
+        $this->readers[$kind] = [
+            'path' => $path,
+            'mtime' => $mtime,
+            'reader' => $reader,
+        ];
+
+        return $reader;
     }
 
     private function enabled(): bool

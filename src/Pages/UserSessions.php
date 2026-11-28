@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Schema;
 use SolutionForest\FilamentLoginGuard\Filament\Exports\UserSessionExporter;
+use SolutionForest\FilamentLoginGuard\FilamentLoginGuardPlugin;
 use SolutionForest\FilamentLoginGuard\Models\UserSession;
 use SolutionForest\FilamentLoginGuard\Support\AuthorizesPages;
 
@@ -179,7 +180,12 @@ class UserSessions extends Page implements HasTable
 
     protected static function isEnabled(): bool
     {
-        return (bool) config('filament-loginguard.pages.sessions.enabled', true)
+        $plugin = FilamentLoginGuardPlugin::current();
+        $enabled = $plugin !== null
+            ? $plugin->hasUserSessionsPage()
+            : (bool) config('filament-loginguard.pages.sessions.enabled', true);
+
+        return $enabled
             && Schema::hasTable(filament_loginguard_config_string('filament-loginguard.sessions.table', 'sessions'));
     }
 }
